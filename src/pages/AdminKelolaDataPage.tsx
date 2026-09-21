@@ -1,35 +1,110 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { PageId, DisasterRecord } from '../types';
 import { DisasterCarousel } from '../components/DisasterCarousel';
-import { Search, Plus, Upload, Download, Trash2, Edit3, X, AlertTriangle, Lock, CheckCircle2, RotateCcw, Filter, Eye, Save } from 'lucide-react';
+import { Pagination } from '../components/Pagination';
+import { JENIS_BENCANA, PROVINSI_38, TAHUN_LIST, PAGE_SIZE, cocokkanPilihan } from '../data/constants';
+import {
+  api,
+  DisasterPayload,
+  fetchDisasters,
+  hapusDisaster,
+  pesanError,
+  simpanDisaster,
+  unduh,
+  urlEkspor,
+} from '../lib/api';
+import { formatAngka, useDebounced, useSummary } from '../lib/hooks';
+import { Search, Plus, Upload, Download, Trash2, Edit3, X, AlertTriangle, Lock, CheckCircle2, RotateCcw, Save, Loader2 } from 'lucide-react';
 
 interface AdminKelolaDataPageProps {
   onNavigate: (page: PageId) => void;
-  disasters: DisasterRecord[];
-  onAddDisaster: (newRecord: DisasterRecord) => void;
-  onUpdateDisaster: (updatedRecord: DisasterRecord) => void;
-  onDeleteDisaster: (id: string) => void;
+  // Dipanggil setelah data berubah (tambah / ubah / hapus) supaya halaman lain ikut menyegarkan data
+  onDataChanged?: () => void;
 }
 
-export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
-  onNavigate,
-  disasters,
-  onAddDisaster,
-  onUpdateDisaster,
-  onDeleteDisaster,
-}) => {
+// Nilai form disimpan sebagai teks supaya kolom angka bisa dikosongkan saat mengetik
+interface DisasterForm {
+  id?: string; // kosong = data baru
+  jenis: string;
+  tanggalIso: string;
+  provinsi: string;
+  kabupatenKota: string;
+  penyebab: string;
+  korbanMeninggal: string;
+  korbanHilang: string;
+  korbanLuka: string;
+  rumahRusak: string;
+  rumahTerendam: string;
+  fasilitasRusak: string;
+}
+
+const hariIni = () => {
+  const d = new Date();
+  const dua = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${dua(d.getMonth() + 1)}-${dua(d.getDate())}`;
+};
+
+const formKosong = (): DisasterForm => ({
+  jenis: JENIS_BENCANA[0],
+  tanggalIso: hariIni(),
+  provinsi: '',
+  kabupatenKota: '',
+  penyebab: '',
+  korbanMeninggal: '0',
+  korbanHilang: '0',
+  korbanLuka: '0',
+  rumahRusak: '0',
+  rumahTerendam: '0',
+  fasilitasRusak: '0',
+});
+
+const formDariRecord = (r: DisasterRecord): DisasterForm => ({
+  id: r.id,
+  jenis: cocokkanPilihan(JENIS_BENCANA, r.jenis),
+  tanggalIso: r.tanggalIso,
+  provinsi: cocokkanPilihan(PROVINSI_38, r.provinsi),
+  kabupatenKota: r.kabupatenKota,
+  penyebab: r.penyebab === 'Tidak diketahui' ? '' : r.penyebab,
+  korbanMeninggal: String(r.korbanMeninggal ?? 0),
+  korbanHilang: String(r.korbanHilang ?? 0),
+  korbanLuka: String(r.korbanLuka ?? 0),
+  rumahRusak: String(r.rumahRusak ?? 0),
+  rumahTerendam: String(r.rumahTerendam ?? 0),
+  fasilitasRusak: String(r.fasilitasRusak ?? 0),
+});
+
+const inputCls = 'w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs focus:bg-white focus:outline-none';
+
+export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({ onNavigate, onDataChanged }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
+  const [currentPageNum, setCurrentPageNum] = useState(1);
+
+  // Data tabel dari database (10 baris per halaman)
+  const [rows, setRows] = useState<DisasterRecord[]>([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const summary = useSummary(refreshTick);
+  const debouncedSearch = useDebounced(searchQuery);
+  const filters = { q: debouncedSearch, jenis: typeFilter, provinsi: provinceFilter, tahun: yearFilter };
 
   // Delete modal state
   const [deleteTarget, setDeleteTarget] = useState<DisasterRecord | null>(null);
   const [deleteAuthConfirmed, setDeleteAuthConfirmed] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Edit / Add modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<DisasterRecord | null>(null);
+  const [form, setForm] = useState<DisasterForm | null>(null);
+  const [formError, setFormError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
 
   // Import wizard modal
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -44,95 +119,138 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
     }, 4500);
   };
 
-  // Filtered
-  const filteredData = disasters.filter((item) => {
-    const matchesSearch =
-      !searchQuery ||
-      item.kabupatenKota.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.provinsi.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.penyebab.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.ringkasanDampak.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.id.toLowerCase().includes(searchQuery.toLowerCase());
+  // Kembali ke halaman 1 setiap kali filter berubah
+  useEffect(() => {
+    setCurrentPageNum(1);
+  }, [debouncedSearch, typeFilter, provinceFilter, yearFilter]);
 
-    const matchesType = !typeFilter || item.jenis.toLowerCase().includes(typeFilter.toLowerCase());
-    const matchesProvince = !provinceFilter || item.provinsi.toLowerCase().includes(provinceFilter.toLowerCase());
-    const matchesYear = !yearFilter || item.tanggalIso.startsWith(yearFilter);
+  // Ambil 10 kejadian per halaman dari database
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsLoading(true);
+    setErrorMessage('');
+    fetchDisasters(
+      { q: debouncedSearch, jenis: typeFilter, provinsi: provinceFilter, tahun: yearFilter },
+      currentPageNum,
+      PAGE_SIZE,
+      { cariId: true, signal: controller.signal }
+    )
+      .then((res) => {
+        setRows(res.data);
+        setTotalRows(res.total);
+        setTotalPages(res.totalPages);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        if ((err as Error).name === 'AbortError') return;
+        setErrorMessage(pesanError(err));
+        setRows([]);
+        setTotalRows(0);
+        setTotalPages(1);
+        setIsLoading(false);
+      });
+    return () => controller.abort();
+  }, [debouncedSearch, typeFilter, provinceFilter, yearFilter, currentPageNum, refreshTick]);
 
-    return matchesSearch && matchesType && matchesProvince && matchesYear;
-  });
+  // Saran nama kabupaten/kota sesuai provinsi yang dipilih di form
+  const formProvinsi = form?.provinsi || '';
+  useEffect(() => {
+    if (!formProvinsi) {
+      setCitySuggestions([]);
+      return;
+    }
+    let batal = false;
+    api<string[]>(`/api/disasters/cities?provinsi=${encodeURIComponent(formProvinsi)}`)
+      .then((list) => !batal && setCitySuggestions(list))
+      .catch(() => !batal && setCitySuggestions([]));
+    return () => {
+      batal = true;
+    };
+  }, [formProvinsi]);
 
-  const confirmDelete = () => {
+  const startRow = totalRows === 0 ? 0 : (currentPageNum - 1) * PAGE_SIZE + 1;
+  const endRow = Math.min(currentPageNum * PAGE_SIZE, totalRows);
+
+  const afterDataChanged = () => {
+    setRefreshTick((t) => t + 1);
+    onDataChanged?.();
+  };
+
+  const confirmDelete = async () => {
     if (!deleteTarget || !deleteAuthConfirmed) return;
-    onDeleteDisaster(deleteTarget.id);
-    showToast(`Catatan kejadian ${deleteTarget.id} (${deleteTarget.kabupatenKota}) berhasil dihapus dari database.`);
-    setDeleteTarget(null);
-    setDeleteAuthConfirmed(false);
+    setIsDeleting(true);
+    try {
+      await hapusDisaster(deleteTarget.id);
+      showToast(`Catatan kejadian ${deleteTarget.id} (${deleteTarget.kabupatenKota}) berhasil dihapus dari database.`);
+      // Kalau yang dihapus satu-satunya baris di halaman ini, mundur satu halaman
+      if (rows.length === 1 && currentPageNum > 1) setCurrentPageNum(currentPageNum - 1);
+      afterDataChanged();
+      setDeleteTarget(null);
+      setDeleteAuthConfirmed(false);
+    } catch (err) {
+      showToast(`Gagal menghapus: ${pesanError(err)}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleOpenEdit = (record: DisasterRecord) => {
-    setEditingRecord({ ...record });
+    setForm(formDariRecord(record));
+    setFormError('');
     setEditModalOpen(true);
   };
 
   const handleOpenCreate = () => {
-    setEditingRecord({
-      id: `BNC-${Date.now().toString().slice(-6)}`,
-      tanggal: '20 Jun 2024',
-      tanggalIso: '2024-06-20',
-      waktu: '10:00 WIB',
-      jenis: 'Banjir',
-      kabupatenKota: '',
-      provinsi: 'Jawa Tengah',
-      ringkasanDampak: '',
-      penyebab: '',
-      latitude: -6.9,
-      longitude: 110.4,
-      statusVerifikasi: 'Terverifikasi Otoritas PantauBencana',
-      korbanMeninggal: 0,
-      korbanLuka: 0,
-      tingkatRisiko: 'Sedang',
-      deskripsiDetail: '',
-    });
+    setForm(formKosong());
+    setFormError('');
     setEditModalOpen(true);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingRecord) return;
-
-    const exists = disasters.some((d) => d.id === editingRecord.id);
-    if (exists) {
-      onUpdateDisaster(editingRecord);
-      showToast(`Catatan kejadian ${editingRecord.id} berhasil diperbarui.`);
-    } else {
-      onAddDisaster(editingRecord);
-      showToast(`Catatan kejadian ${editingRecord.id} baru berhasil ditambahkan.`);
-    }
+  const closeEditModal = () => {
+    if (isSaving) return;
     setEditModalOpen(false);
-    setEditingRecord(null);
+    setForm(null);
   };
 
-  const handleExportCsv = () => {
-    const headers = ['ID', 'Tanggal', 'Jenis', 'Kabupaten/Kota', 'Provinsi', 'Ringkasan Dampak', 'Penyebab'];
-    const rows = filteredData.map((d) => [
-      d.id,
-      `"${d.tanggal}"`,
-      `"${d.jenis}"`,
-      `"${d.kabupatenKota}"`,
-      `"${d.provinsi}"`,
-      `"${d.ringkasanDampak.replace(/"/g, '""')}"`,
-      `"${d.penyebab.replace(/"/g, '""')}"`,
-    ]);
+  const setField = (field: keyof DisasterForm, value: string) => setForm((f) => (f ? { ...f, [field]: value } : f));
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'pantau_bencana_admin_export.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form) return;
+    setFormError('');
+    setIsSaving(true);
+    try {
+      const payload: DisasterPayload = {
+        jenis: form.jenis,
+        tanggalIso: form.tanggalIso,
+        kabupatenKota: form.kabupatenKota.trim(),
+        provinsi: form.provinsi,
+        penyebab: form.penyebab.trim(),
+        korbanMeninggal: Number(form.korbanMeninggal) || 0,
+        korbanHilang: Number(form.korbanHilang) || 0,
+        korbanLuka: Number(form.korbanLuka) || 0,
+        rumahRusak: Number(form.rumahRusak) || 0,
+        rumahTerendam: Number(form.rumahTerendam) || 0,
+        fasilitasRusak: Number(form.fasilitasRusak) || 0,
+      };
+      const saved = await simpanDisaster(payload, form.id);
+      showToast(
+        form.id
+          ? `Catatan kejadian ${saved.id} berhasil diperbarui di database.`
+          : `Catatan kejadian baru (ID ${saved.id}) berhasil disimpan ke database.`
+      );
+      setEditModalOpen(false);
+      setForm(null);
+      afterDataChanged();
+    } catch (err) {
+      setFormError(pesanError(err));
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  // Ekspor CSV semua hasil filter (bukan hanya halaman yang tampil)
+  const handleExportCsv = () => unduh(urlEkspor(filters, true));
 
   return (
     <div className="flex flex-col w-full space-y-6 pb-12">
@@ -165,7 +283,7 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
             Kelola Data Arsip Kejadian
           </h1>
           <p className="font-body-md text-xs text-on-surface-variant max-w-2xl leading-relaxed">
-            Katalog induk validasi dan audit peristiwa hidrometeorologi &amp; geologis 2018–2024 (28.773 arsip terstandardisasi) terintegrasi sistem Tim Pemantau Wilayah seluruh Indonesia.
+            Katalog induk validasi dan audit peristiwa hidrometeorologi &amp; geologis 2018–2024 ({formatAngka(summary?.total)} arsip terstandardisasi) terintegrasi sistem Tim Pemantau Wilayah seluruh Indonesia.
           </p>
         </div>
 
@@ -208,7 +326,7 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
             </div>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <span className="font-display-lg text-2xl font-bold text-on-surface">{disasters.length + 28760}</span>
+            <span className="font-display-lg text-2xl font-bold text-on-surface">{formatAngka(summary?.total)}</span>
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-surface-container text-primary font-semibold">
               Kejadian tercatat
             </span>
@@ -229,7 +347,7 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
             </div>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <span className="font-display-lg text-2xl font-bold text-red-600">4.829</span>
+            <span className="font-display-lg text-2xl font-bold text-red-600">{formatAngka(summary ? summary.meninggal + summary.hilang : null)}</span>
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-semibold">
               Meninggal &amp; Hilang
             </span>
@@ -250,7 +368,7 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
             </div>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <span className="font-display-lg text-2xl font-bold text-[#5a2500]">18.240</span>
+            <span className="font-display-lg text-2xl font-bold text-[#5a2500]">{formatAngka(summary?.luka)}</span>
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#ffdbca] text-[#763300] font-semibold">
               Jiwa terdampak fisik
             </span>
@@ -271,7 +389,7 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
             </div>
           </div>
           <div className="mt-2 flex items-baseline justify-between">
-            <span className="font-display-lg text-2xl font-bold text-secondary">342.180</span>
+            <span className="font-display-lg text-2xl font-bold text-secondary">{formatAngka(summary ? summary.rumahRusak + summary.rumahTerendam + summary.fasilitasRusak : null)}</span>
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-secondary-fixed text-secondary font-semibold">
               Unit infrastruktur
             </span>
@@ -297,7 +415,7 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari Kabupaten, Kota, Provinsi, Penyebab / ID kejadian..."
+              placeholder="Cari Kabupaten, Kota, Provinsi, Jenis Bencana / ID kejadian..."
               className="w-full bg-surface-container-low text-on-surface placeholder:text-outline text-xs pl-9 pr-4 py-2 rounded-lg border border-surface-container focus:outline-none focus:bg-white transition-all"
             />
           </div>
@@ -307,49 +425,42 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
               className="bg-surface-container-low text-xs border border-surface-container rounded-lg px-3 py-2 text-on-surface focus:outline-none cursor-pointer"
+              aria-label="Filter jenis bencana"
             >
               <option value="">Jenis Bencana (13 Tipe)</option>
-              <option value="banjir">Banjir</option>
-              <option value="cuaca">Cuaca Ekstrem</option>
-              <option value="longsor">Tanah Longsor</option>
-              <option value="karhutla">Kebakaran Hutan &amp; Lahan</option>
-              <option value="puting">Puting Beliung</option>
-              <option value="kekeringan">Kekeringan</option>
-              <option value="gempa">Gempa Bumi</option>
-              <option value="pasang">Gelombang Pasang / Abrasi</option>
-              <option value="erupsi">Erupsi Gunung Api</option>
-              <option value="tsunami">Tsunami</option>
+              {JENIS_BENCANA.map((j) => (
+                <option key={j} value={j}>
+                  {j}
+                </option>
+              ))}
             </select>
 
             <select
               value={provinceFilter}
               onChange={(e) => setProvinceFilter(e.target.value)}
               className="bg-surface-container-low text-xs border border-surface-container rounded-lg px-3 py-2 text-on-surface focus:outline-none cursor-pointer"
+              aria-label="Filter provinsi"
             >
-              <option value="">Provinsi: Normalisasi 40 Ragam</option>
-              <option value="Jawa Tengah">Jawa Tengah</option>
-              <option value="Jawa Barat">Jawa Barat</option>
-              <option value="Jawa Timur">Jawa Timur</option>
-              <option value="Sulawesi Selatan">Sulawesi Selatan</option>
-              <option value="Sumatera Barat">Sumatera Barat</option>
-              <option value="Jambi">Jambi</option>
-              <option value="Papua">Papua</option>
-              <option value="Nusa Tenggara Timur">Nusa Tenggara Timur</option>
+              <option value="">Semua Provinsi (38)</option>
+              {PROVINSI_38.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
             </select>
 
             <select
               value={yearFilter}
               onChange={(e) => setYearFilter(e.target.value)}
               className="bg-surface-container-low text-xs border border-surface-container rounded-lg px-3 py-2 text-on-surface focus:outline-none cursor-pointer"
+              aria-label="Filter tahun"
             >
               <option value="">Rentang: 2018 - 2024</option>
-              <option value="2024">Tahun 2024 (Berjalan)</option>
-              <option value="2023">Tahun 2023</option>
-              <option value="2022">Tahun 2022</option>
-              <option value="2021">Tahun 2021</option>
-              <option value="2020">Tahun 2020</option>
-              <option value="2019">Tahun 2019</option>
-              <option value="2018">Tahun 2018</option>
+              {TAHUN_LIST.map((t) => (
+                <option key={t} value={t}>
+                  Tahun {t}
+                </option>
+              ))}
             </select>
 
             <button
@@ -371,7 +482,7 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
           <div className="flex items-center gap-2">
             <span className="font-semibold text-on-surface">Filter Aktif:</span>
             <span className="bg-surface-container px-2 py-0.5 rounded-full text-primary font-medium text-[11px]">
-              Arsip 1 Jan 2018 – 2024
+              {yearFilter ? `Tahun ${yearFilter}` : 'Arsip 2018 – 2024'}
             </span>
             <span className="bg-surface-container px-2 py-0.5 rounded-full text-secondary font-medium text-[11px]">
               {typeFilter ? `Jenis: ${typeFilter}` : 'Semua 13 Jenis Bencana'}
@@ -381,7 +492,7 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
             </span>
           </div>
           <span className="text-[11px]">
-            Menampilkan <strong className="text-on-surface">{filteredData.length}</strong> baris arsip
+            Ditemukan <strong className="text-on-surface">{formatAngka(totalRows)}</strong> baris arsip
           </span>
         </div>
       </section>
@@ -402,7 +513,7 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container-low">
-              {filteredData.map((record) => {
+              {rows.map((record) => {
                 const isLongsor = record.jenis.toLowerCase().includes('longsor');
                 return (
                   <tr key={record.id} className="hover:bg-surface-container-low/50 transition-colors">
@@ -466,25 +577,32 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
               })}
             </tbody>
           </table>
+          {!isLoading && rows.length === 0 && (
+            <div className="py-10 text-center text-xs text-on-surface-variant">
+              {errorMessage ? errorMessage : 'Tidak ada data kejadian yang cocok dengan filter yang dipilih.'}
+            </div>
+          )}
+          {isLoading && rows.length === 0 && (
+            <div className="py-10 flex items-center justify-center gap-2 text-xs text-on-surface-variant">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Memuat data dari database...</span>
+            </div>
+          )}
         </div>
 
         {/* Table Footer */}
         <div className="p-4 bg-white border-t border-surface-container flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-on-surface-variant">
-          <div>
-            Menampilkan 1 - {filteredData.length} dari 28.773 baris kejadian terverifikasi
+          <div className="flex items-center gap-2">
+            {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            <span>
+              Menampilkan{' '}
+              <strong className="text-on-surface">
+                {totalRows === 0 ? '0' : `${formatAngka(startRow)} - ${formatAngka(endRow)}`}
+              </strong>{' '}
+              dari <strong className="text-on-surface">{formatAngka(totalRows)}</strong> baris kejadian
+            </span>
           </div>
-          <div className="flex items-center gap-1">
-            <button disabled className="px-3 py-1.5 rounded-lg bg-surface-container-low opacity-50 cursor-not-allowed">
-              Sebelumnya
-            </button>
-            <button className="w-7 h-7 rounded bg-primary text-white font-bold">1</button>
-            <button className="w-7 h-7 rounded bg-surface-container-low hover:bg-surface-container text-on-surface">2</button>
-            <button className="w-7 h-7 rounded bg-surface-container-low hover:bg-surface-container text-on-surface">3</button>
-            <span className="px-1">...</span>
-            <button className="px-3 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface">
-              Selanjutnya
-            </button>
-          </div>
+          <Pagination page={currentPageNum} totalPages={totalPages} onChange={setCurrentPageNum} disabled={isLoading} />
         </div>
       </section>
 
@@ -520,11 +638,11 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
 
               <div className="bg-surface-container-low p-3.5 rounded-xl space-y-2 border border-surface-container text-left leading-relaxed">
                 <p className="text-on-surface">
-                  Tindakan ini akan menghapus data {deleteTarget.kabupatenKota} dari katalog tampilan publik dan memindahkannya ke arsip audit log. Aksi ini memerlukan persetujuan otorisasi operator.
+                  Tindakan ini akan menghapus permanen data kejadian {deleteTarget.kabupatenKota} (ID {deleteTarget.id}) dari database dan tidak dapat dibatalkan.
                 </p>
                 <div className="flex items-center gap-1.5 pt-1 text-[11px] text-on-surface-variant">
                   <Lock className="w-3.5 h-3.5 text-secondary" />
-                  <span>Sesi diverifikasi oleh: <strong>Tim Administrator Pusat Analis</strong></span>
+                  <span>Aksi ini hanya dapat dilakukan oleh akun <strong>Administrator</strong></span>
                 </div>
               </div>
 
@@ -550,14 +668,14 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
                 </button>
                 <button
                   type="button"
-                  disabled={!deleteAuthConfirmed}
+                  disabled={!deleteAuthConfirmed || isDeleting}
                   onClick={confirmDelete}
                   className={`px-4 py-2.5 rounded-lg bg-red-600 text-white font-semibold text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ${
-                    !deleteAuthConfirmed ? 'opacity-40 cursor-not-allowed' : 'hover:bg-red-700'
+                    !deleteAuthConfirmed || isDeleting ? 'opacity-40 cursor-not-allowed' : 'hover:bg-red-700'
                   }`}
                 >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Ya, Hapus Data</span>
+                  {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  <span>{isDeleting ? 'Menghapus...' : 'Ya, Hapus Data'}</span>
                 </button>
               </div>
             </div>
@@ -566,10 +684,10 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
       )}
 
       {/* Modal Tambah / Edit Data */}
-      {editModalOpen && editingRecord && (
+      {editModalOpen && form && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-          onClick={() => setEditModalOpen(false)}
+          onClick={closeEditModal}
         >
           <div
             className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden border border-surface-container flex flex-col max-h-[90vh]"
@@ -579,111 +697,137 @@ export const AdminKelolaDataPage: React.FC<AdminKelolaDataPageProps> = ({
             <div className="p-5 flex items-center justify-between border-b border-surface-container">
               <div>
                 <h3 className="font-bold text-base text-on-surface">
-                  {disasters.some((d) => d.id === editingRecord.id) ? 'Edit Catatan Kejadian Bencana' : 'Input Catatan Baru'}
+                  {form.id ? 'Edit Catatan Kejadian Bencana' : 'Tambah Data Kejadian Baru'}
                 </h3>
-                <p className="text-[11px] text-on-surface-variant">ID: {editingRecord.id}</p>
+                <p className="text-[11px] text-on-surface-variant">
+                  {form.id ? `ID: ${form.id}` : 'Data akan langsung disimpan ke database'}
+                </p>
               </div>
-              <button
-                onClick={() => setEditModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-surface-container cursor-pointer"
-              >
+              <button onClick={closeEditModal} type="button" className="p-1.5 rounded-lg hover:bg-surface-container cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleSaveEdit} className="p-5 space-y-3.5 overflow-y-auto text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              {formError && (
+                <div className="p-2.5 rounded-lg bg-red-50 text-red-800 border border-red-200 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold block mb-1">Jenis Bencana</label>
-                  <input
-                    type="text"
-                    required
-                    value={editingRecord.jenis}
-                    onChange={(e) => setEditingRecord({ ...editingRecord, jenis: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs"
-                  />
+                  <select required value={form.jenis} onChange={(e) => setField('jenis', e.target.value)} className={`${inputCls} cursor-pointer`}>
+                    {JENIS_BENCANA.map((j) => (
+                      <option key={j} value={j}>
+                        {j}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label className="font-semibold block mb-1">Tanggal</label>
+                  <label className="font-semibold block mb-1">Tanggal Kejadian</label>
                   <input
-                    type="text"
+                    type="date"
                     required
-                    value={editingRecord.tanggal}
-                    onChange={(e) => setEditingRecord({ ...editingRecord, tanggal: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs"
+                    value={form.tanggalIso}
+                    onChange={(e) => setField('tanggalIso', e.target.value)}
+                    className={inputCls}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold block mb-1">Provinsi</label>
+                  <select required value={form.provinsi} onChange={(e) => setField('provinsi', e.target.value)} className={`${inputCls} cursor-pointer`}>
+                    <option value="">Pilih provinsi...</option>
+                    {PROVINSI_38.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div>
                   <label className="font-semibold block mb-1">Kabupaten / Kota</label>
                   <input
                     type="text"
                     required
-                    value={editingRecord.kabupatenKota}
-                    onChange={(e) => setEditingRecord({ ...editingRecord, kabupatenKota: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs"
+                    maxLength={50}
+                    list="saran-kabupaten-kota"
+                    value={form.kabupatenKota}
+                    onChange={(e) => setField('kabupatenKota', e.target.value)}
+                    placeholder={form.provinsi ? 'Ketik atau pilih dari saran' : 'Pilih provinsi dulu'}
+                    className={inputCls}
                   />
-                </div>
-                <div>
-                  <label className="font-semibold block mb-1">Provinsi</label>
-                  <input
-                    type="text"
-                    required
-                    value={editingRecord.provinsi}
-                    onChange={(e) => setEditingRecord({ ...editingRecord, provinsi: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs"
-                  />
+                  <datalist id="saran-kabupaten-kota">
+                    {citySuggestions.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
               <div>
-                <label className="font-semibold block mb-1">Ringkasan Dampak</label>
-                <input
-                  type="text"
-                  required
-                  value={editingRecord.ringkasanDampak}
-                  onChange={(e) => setEditingRecord({ ...editingRecord, ringkasanDampak: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs"
-                />
+                <span className="font-semibold block mb-1">Dampak</span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {(
+                    [
+                      ['korbanMeninggal', 'Meninggal (jiwa)'],
+                      ['korbanHilang', 'Hilang (jiwa)'],
+                      ['korbanLuka', 'Luka-luka (jiwa)'],
+                      ['rumahRusak', 'Rumah rusak'],
+                      ['rumahTerendam', 'Rumah terendam'],
+                      ['fasilitasRusak', 'Fasilitas rusak'],
+                    ] as [keyof DisasterForm, string][]
+                  ).map(([field, label]) => (
+                    <div key={field}>
+                      <label className="text-[11px] text-on-surface-variant block mb-1">{label}</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={form[field] as string}
+                        onChange={(e) => setField(field, e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div>
-                <label className="font-semibold block mb-1">Penyebab</label>
-                <input
-                  type="text"
-                  required
-                  value={editingRecord.penyebab}
-                  onChange={(e) => setEditingRecord({ ...editingRecord, penyebab: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold block mb-1">Keterangan Verifikasi Detail</label>
+                <label className="font-semibold block mb-1">
+                  Penyebab <span className="font-normal text-outline">(opsional)</span>
+                </label>
                 <textarea
                   rows={3}
-                  value={editingRecord.deskripsiDetail || ''}
-                  onChange={(e) => setEditingRecord({ ...editingRecord, deskripsiDetail: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs"
+                  value={form.penyebab}
+                  onChange={(e) => setField('penyebab', e.target.value)}
+                  placeholder="Kosongkan jika tidak diketahui"
+                  className={inputCls}
                 />
               </div>
 
               <div className="pt-2 border-t border-surface-container flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setEditModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-surface-container text-on-surface font-semibold text-xs cursor-pointer"
+                  onClick={closeEditModal}
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded-lg bg-surface-container text-on-surface font-semibold text-xs cursor-pointer disabled:opacity-50"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-lg bg-primary text-white font-semibold text-xs hover:bg-primary-container flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  disabled={isSaving}
+                  className="px-5 py-2 rounded-lg bg-primary text-white font-semibold text-xs hover:bg-primary-container flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-70"
                 >
-                  <Save className="w-4 h-4" />
-                  <span>Simpan Perubahan</span>
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>{isSaving ? 'Menyimpan...' : form.id ? 'Simpan Perubahan' : 'Simpan Data'}</span>
                 </button>
               </div>
             </form>

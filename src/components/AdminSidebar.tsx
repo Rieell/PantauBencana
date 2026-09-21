@@ -1,5 +1,5 @@
 import React from 'react';
-import { PageId } from '../types';
+import { PageId, UserAccount } from '../types';
 import { ArrowLeft, X } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -8,6 +8,7 @@ interface AdminSidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
   onLogout?: () => void;
+  currentUser?: UserAccount | null;
 }
 
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({ 
@@ -15,7 +16,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onNavigate, 
   isOpen = true,
   onClose,
-  onLogout: _onLogout 
+  onLogout: _onLogout,
+  currentUser
 }) => {
   const menuItems: { id: PageId; label: string; icon: string }[] = [
     { id: 'dashboard-admin', label: 'Ringkasan Eksekutif', icon: 'dashboard' },
@@ -138,9 +140,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           </p>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <p className="font-body-sm text-body-sm text-on-surface font-semibold">Tim Administrator Pusat</p>
+            <p className="font-body-sm text-body-sm text-on-surface font-semibold">{currentUser?.nama || 'Administrator'}</p>
           </div>
-          <p className="text-[11px] text-on-surface-variant truncate">admin@pantaubencana.id</p>
+          <p className="text-[11px] text-on-surface-variant truncate">{currentUser?.email}</p>
           <button
             onClick={() => onNavigate('beranda')}
             className="flex items-center gap-space-xs text-secondary font-label-md text-label-md hover:underline pt-1.5 cursor-pointer"

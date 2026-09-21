@@ -1,19 +1,19 @@
-import { DisasterRecord, DisasterStat, UserAccount, CsvImportLog, WeatherData } from '../types';
+import { DisasterRecord, DisasterStat, CsvImportLog, WeatherData } from '../types';
 
 export const INITIAL_DISASTER_STATS: DisasterStat[] = [
   { name: "Banjir", count: "8.605", numericCount: 8605, pct: "29.9%", icon: "water_drop", color: "text-[#006398]", bg: "bg-[#cce5ff]", border: "border-[#006398]/30", textBadge: "text-[#00476e]" },
-  { name: "Cuaca ekstrem", count: "7.142", numericCount: 7142, pct: "24.8%", icon: "cyclone", color: "text-[#00288e]", bg: "bg-[#dde1ff]", border: "border-[#00288e]/30", textBadge: "text-[#173bab]" },
+  { name: "Cuaca ekstrem", count: "7.268", numericCount: 7268, pct: "25.3%", icon: "cyclone", color: "text-[#00288e]", bg: "bg-[#dde1ff]", border: "border-[#00288e]/30", textBadge: "text-[#173bab]" },
   { name: "Tanah longsor", count: "5.585", numericCount: 5585, pct: "19.4%", icon: "landscape", color: "text-[#5a2500]", bg: "bg-[#ffdbca]", border: "border-[#5a2500]/30", textBadge: "text-[#763300]" },
-  { name: "Kebakaran hutan dan lahan", count: "3.420", numericCount: 3420, pct: "11.9%", icon: "local_fire_department", color: "text-[#7d3600]", bg: "bg-[#ffb68e]", border: "border-[#7d3600]/30", textBadge: "text-[#331200]" },
-  { name: "Puting beliung", count: "2.110", numericCount: 2110, pct: "7.3%", icon: "air", color: "text-[#006398]", bg: "bg-[#cce5ff]", border: "border-[#006398]/30", textBadge: "text-[#00476e]" },
-  { name: "Kekeringan", count: "986", numericCount: 986, pct: "3.4%", icon: "sunny", color: "text-amber-700", bg: "bg-amber-100", border: "border-amber-300", textBadge: "text-amber-900" },
-  { name: "Gempa bumi", count: "382", numericCount: 382, pct: "1.3%", icon: "broken_image", color: "text-rose-700", bg: "bg-rose-100", border: "border-rose-300", textBadge: "text-rose-900" },
-  { name: "Gelombang pasang / abrasi", count: "245", numericCount: 245, pct: "0.85%", icon: "tsunami", color: "text-cyan-700", bg: "bg-cyan-100", border: "border-cyan-300", textBadge: "text-cyan-900" },
-  { name: "Erupsi gunung api", count: "168", numericCount: 168, pct: "0.58%", icon: "volcano", color: "text-red-700", bg: "bg-red-100", border: "border-red-300", textBadge: "text-red-900" },
-  { name: "Tsunami", count: "48", numericCount: 48, pct: "0.17%", icon: "waves", color: "text-indigo-700", bg: "bg-indigo-100", border: "border-indigo-300", textBadge: "text-indigo-900" },
-  { name: "Gempa bumi dan tsunami", count: "34", numericCount: 34, pct: "0.12%", icon: "flood", color: "text-purple-700", bg: "bg-purple-100", border: "border-purple-300", textBadge: "text-purple-900" },
-  { name: "Gelombang pasang dan abrasi", count: "31", numericCount: 31, pct: "0.11%", icon: "water", color: "text-sky-700", bg: "bg-sky-100", border: "border-sky-300", textBadge: "text-sky-900" },
-  { name: "Letusan gunung api", count: "17", numericCount: 17, pct: "0.06%", icon: "landslide", color: "text-orange-700", bg: "bg-orange-100", border: "border-orange-300", textBadge: "text-orange-900" }
+  { name: "Kebakaran hutan dan lahan", count: "4.967", numericCount: 4967, pct: "17.3%", icon: "local_fire_department", color: "text-[#7d3600]", bg: "bg-[#ffb68e]", border: "border-[#7d3600]/30", textBadge: "text-[#331200]" },
+  { name: "Puting beliung", count: "1.113", numericCount: 1113, pct: "3.9%", icon: "air", color: "text-[#006398]", bg: "bg-[#cce5ff]", border: "border-[#006398]/30", textBadge: "text-[#00476e]" },
+  { name: "Kekeringan", count: "489", numericCount: 489, pct: "1.7%", icon: "sunny", color: "text-amber-700", bg: "bg-amber-100", border: "border-amber-300", textBadge: "text-amber-900" },
+  { name: "Gempa bumi", count: "370", numericCount: 370, pct: "1.3%", icon: "broken_image", color: "text-rose-700", bg: "bg-rose-100", border: "border-rose-300", textBadge: "text-rose-900" },
+  { name: "Gelombang pasang / abrasi", count: "270", numericCount: 270, pct: "0.94%", icon: "tsunami", color: "text-cyan-700", bg: "bg-cyan-100", border: "border-cyan-300", textBadge: "text-cyan-900" },
+  { name: "Erupsi gunung api", count: "90", numericCount: 90, pct: "0.31%", icon: "volcano", color: "text-red-700", bg: "bg-red-100", border: "border-red-300", textBadge: "text-red-900" },
+  { name: "Tsunami", count: "7", numericCount: 7, pct: "0.02%", icon: "waves", color: "text-indigo-700", bg: "bg-indigo-100", border: "border-indigo-300", textBadge: "text-indigo-900" },
+  { name: "Gempa bumi dan tsunami", count: "5", numericCount: 5, pct: "0.02%", icon: "flood", color: "text-purple-700", bg: "bg-purple-100", border: "border-purple-300", textBadge: "text-purple-900" },
+  { name: "Gelombang pasang dan abrasi", count: "3", numericCount: 3, pct: "0.01%", icon: "water", color: "text-sky-700", bg: "bg-sky-100", border: "border-sky-300", textBadge: "text-sky-900" },
+  { name: "Letusan gunung api", count: "1", numericCount: 1, pct: "0.00%", icon: "landslide", color: "text-orange-700", bg: "bg-orange-100", border: "border-orange-300", textBadge: "text-orange-900" }
 ];
 
 export const INITIAL_DISASTERS: DisasterRecord[] = [
@@ -256,89 +256,6 @@ export const INITIAL_DISASTERS: DisasterRecord[] = [
     rumahRusak: 28,
     tingkatRisiko: "Sedang",
     deskripsiDetail: "Angin kencang menerbangkan seng atap rumah warga dan menumbangkan pepohonan besar di tepi jalan raya Pajajaran."
-  }
-];
-
-export const INITIAL_USERS: UserAccount[] = [
-  {
-    id: "USR-001",
-    nama: "Dr. Raditya Pratama",
-    email: "raditya.pratama@pantaubencana.id",
-    peran: "Admin",
-    tanggalRegister: "12 Jan 2024, 08:30 WIB",
-    instansi: "Tim Administrator Pusat",
-    avatarColor: "bg-[#00288e] text-white",
-    status: "Aktif"
-  },
-  {
-    id: "USR-002",
-    nama: "Siti Khadijah (Pusat Kendali)",
-    email: "skhadijah@pantaubencana.id",
-    peran: "Admin",
-    tanggalRegister: "15 Mar 2024, 10:14 WIB",
-    instansi: "Tim Pemantau Wilayah Jakarta",
-    avatarColor: "bg-[#5bb8fe] text-[#001d31]",
-    status: "Aktif"
-  },
-  {
-    id: "USR-003",
-    nama: "Budi Santoso",
-    email: "budi.santoso@email.com",
-    peran: "User",
-    tanggalRegister: "24 Mei 2024, 14:20 WIB",
-    instansi: "Masyarakat Umum - Demak",
-    avatarColor: "bg-[#e6eeff] text-[#0d1c2e]",
-    status: "Aktif"
-  },
-  {
-    id: "USR-004",
-    nama: "Admin Pengelola Data",
-    email: "admin.pusat@pantaubencana.id",
-    peran: "Admin",
-    tanggalRegister: "02 Feb 2024, 11:05 WIB",
-    instansi: "Otoritas PantauBencana",
-    avatarColor: "bg-[#1e40af] text-white",
-    status: "Aktif"
-  },
-  {
-    id: "USR-005",
-    nama: "Nurul Anindya (Relawan)",
-    email: "nurul.anindya99@gmail.com",
-    peran: "User",
-    tanggalRegister: "24 Mei 2024, 16:45 WIB",
-    instansi: "Relawan Komunitas Bandung",
-    avatarColor: "bg-[#ffdbca] text-[#763300]",
-    status: "Aktif"
-  },
-  {
-    id: "USR-006",
-    nama: "Irwan Hernanto",
-    email: "i.hernanto@pantaubencana.id",
-    peran: "Admin",
-    tanggalRegister: "18 Mei 2024, 09:15 WIB",
-    instansi: "Tim Pemantau Jawa Barat",
-    avatarColor: "bg-[#006398] text-white",
-    status: "Aktif"
-  },
-  {
-    id: "USR-007",
-    nama: "Rian Hidayat",
-    email: "rian.hidayat.spm@yahoo.com",
-    peran: "User",
-    tanggalRegister: "10 Feb 2024, 18:22 WIB",
-    instansi: "Warga Karanganyar Demak",
-    avatarColor: "bg-[#ffdad6] text-[#93000a]",
-    status: "Aktif"
-  },
-  {
-    id: "USR-008",
-    nama: "Maria Larasati",
-    email: "maria.larasati.id@outlook.com",
-    peran: "User",
-    tanggalRegister: "24 Mei 2024, 18:02 WIB",
-    instansi: "Peneliti Geografi UI",
-    avatarColor: "bg-[#dce9ff] text-[#00288e]",
-    status: "Aktif"
   }
 ];
 

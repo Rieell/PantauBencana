@@ -1,38 +1,72 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { PageId, DisasterRecord } from '../types';
-import { INITIAL_DISASTERS } from '../data/mockData';
 import { InteractiveLeafletMap } from '../components/InteractiveLeafletMap';
-import { Map, Layers, Filter, Search, AlertCircle, Compass, Info, X, ChevronRight, Droplets, Mountain, Wind, FlameKindling, Shield } from 'lucide-react';
+import { JENIS_BENCANA, PROVINSI_38, TAHUN_LIST } from '../data/constants';
+import { fetchDisasters, pesanError } from '../lib/api';
+import { useDebounced } from '../lib/hooks';
+import { Search, AlertCircle, ChevronRight, RotateCcw, Loader2 } from 'lucide-react';
 
 interface PetaBencanaPageProps {
   onNavigate: (page: PageId) => void;
-  disasters?: DisasterRecord[];
 }
 
-export const PetaBencanaPage: React.FC<PetaBencanaPageProps> = ({ onNavigate, disasters }) => {
-  const allDisasters = disasters || INITIAL_DISASTERS;
-  const [selectedDisaster, setSelectedDisaster] = useState<DisasterRecord | null>(allDisasters[0] || null);
-  const [filterType, setFilterType] = useState<string>('all');
+// Jumlah maksimum titik yang digambar di peta supaya peta tetap lancar
+const MAKS_TITIK_PETA = 1000;
+
+export const PetaBencanaPage: React.FC<PetaBencanaPageProps> = ({ onNavigate }) => {
+  const [mapData, setMapData] = useState<DisasterRecord[]>([]);
+  const [totalCocok, setTotalCocok] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [selectedDisaster, setSelectedDisaster] = useState<DisasterRecord | null>(null);
+
+  const [filterType, setFilterType] = useState<string>('');
+  const [filterProvince, setFilterProvince] = useState<string>('');
+  const [filterYear, setFilterYear] = useState<string>('');
   const [filterRisk, setFilterRisk] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const debouncedSearch = useDebounced(searchQuery);
 
-  // Filtered disasters for map
-  const filteredDisasters = allDisasters.filter((item) => {
-    const matchesSearch =
-      !searchQuery ||
-      item.kabupatenKota.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.provinsi.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.jenis.toLowerCase().includes(searchQuery.toLowerCase());
+  // Ambil titik kejadian dari database setiap kali filter berubah
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsLoading(true);
+    setErrorMessage('');
+    fetchDisasters(
+      { q: debouncedSearch, jenis: filterType, provinsi: filterProvince, tahun: filterYear },
+      1,
+      MAKS_TITIK_PETA,
+      { signal: controller.signal }
+    )
+      .then((res) => {
+        setMapData(res.data);
+        setTotalCocok(res.total);
+        setSelectedDisaster(null);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        if ((err as Error).name === 'AbortError') return;
+        setErrorMessage(pesanError(err));
+        setMapData([]);
+        setTotalCocok(0);
+        setIsLoading(false);
+      });
+    return () => controller.abort();
+  }, [debouncedSearch, filterType, filterProvince, filterYear]);
 
-    const matchesType =
-      filterType === 'all' ||
-      item.jenis.toLowerCase().includes(filterType.toLowerCase());
+  // Filter tingkat risiko dihitung di browser (tingkat risiko diturunkan dari dampak)
+  const filteredDisasters = useMemo(
+    () => (filterRisk === 'all' ? mapData : mapData.filter((item) => item.tingkatRisiko === filterRisk)),
+    [mapData, filterRisk]
+  );
 
-    const matchesRisk =
-      filterRisk === 'all' || item.tingkatRisiko === filterRisk;
-
-    return matchesSearch && matchesType && matchesRisk;
-  });
+  const resetFilters = () => {
+    setSearchQuery('');
+    setFilterType('');
+    setFilterProvince('');
+    setFilterYear('');
+    setFilterRisk('all');
+  };
 
   return (
     <div className="flex flex-col w-full">
@@ -63,7 +97,7 @@ export const PetaBencanaPage: React.FC<PetaBencanaPageProps> = ({ onNavigate, di
           </div>
         </div>
 
-        {/* Toolbar Filter */}
+        {/* Search & Filter Panel */}
         <div className="bg-white rounded-xl p-4 shadow-sm border border-surface-container flex flex-wrap items-center justify-between gap-3">
           {/* Search */}
           <div className="relative flex-1 min-w-[220px]">
@@ -77,18 +111,50 @@ export const PetaBencanaPage: React.FC<PetaBencanaPageProps> = ({ onNavigate, di
             />
           </div>
 
-          {/* Filter Type */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Filter Jenis Bencana (13 jenis) */}
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
               className="text-xs bg-surface-container-low border border-surface-container rounded-lg px-3 py-2 text-on-surface focus:outline-none cursor-pointer"
+              aria-label="Filter jenis bencana"
             >
-              <option value="all">Semua Jenis Bencana</option>
-              <option value="banjir">Banjir</option>
-              <option value="longsor">Tanah Longsor</option>
-              <option value="cuaca">Cuaca Ekstrem</option>
-              <option value="pasang">Gelombang Pasang / Rob</option>
+              <option value="">Semua Jenis Bencana</option>
+              {JENIS_BENCANA.map((j) => (
+                <option key={j} value={j}>
+                  {j}
+                </option>
+              ))}
+            </select>
+
+            {/* Filter Provinsi (38 provinsi) */}
+            <select
+              value={filterProvince}
+              onChange={(e) => setFilterProvince(e.target.value)}
+              className="text-xs bg-surface-container-low border border-surface-container rounded-lg px-3 py-2 text-on-surface focus:outline-none cursor-pointer"
+              aria-label="Filter provinsi"
+            >
+              <option value="">Semua Provinsi</option>
+              {PROVINSI_38.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+
+            {/* Filter Tahun (2018 - 2024) */}
+            <select
+              value={filterYear}
+              onChange={(e) => setFilterYear(e.target.value)}
+              className="text-xs bg-surface-container-low border border-surface-container rounded-lg px-3 py-2 text-on-surface focus:outline-none cursor-pointer"
+              aria-label="Filter tahun"
+            >
+              <option value="">Semua Tahun (2018-2024)</option>
+              {TAHUN_LIST.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
             </select>
 
             {/* Filter Risk */}
@@ -96,14 +162,31 @@ export const PetaBencanaPage: React.FC<PetaBencanaPageProps> = ({ onNavigate, di
               value={filterRisk}
               onChange={(e) => setFilterRisk(e.target.value)}
               className="text-xs bg-surface-container-low border border-surface-container rounded-lg px-3 py-2 text-on-surface focus:outline-none cursor-pointer"
+              aria-label="Filter tingkat risiko"
             >
               <option value="all">Semua Tingkat Risiko</option>
               <option value="Tinggi">Risiko Tinggi</option>
               <option value="Sedang">Risiko Sedang</option>
               <option value="Rendah">Risiko Rendah</option>
             </select>
+
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="p-2 text-on-surface-variant hover:text-on-surface bg-surface-container-low rounded-lg transition-colors border border-surface-container cursor-pointer"
+              title="Reset filter"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
           </div>
         </div>
+
+        {errorMessage && (
+          <div className="p-3 rounded-lg bg-red-50 text-red-800 text-xs flex items-center gap-2 border border-red-200">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
 
         {/* Interactive Map & Details Container */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -117,7 +200,15 @@ export const PetaBencanaPage: React.FC<PetaBencanaPageProps> = ({ onNavigate, di
                   Peta Spasial Geospasial Indonesia (OpenStreetMap &amp; Topografi)
                 </span>
                 <span className="text-[11px] text-on-surface-variant hidden sm:inline">
-                  • {filteredDisasters.length} titik aktif terpantau
+                  {isLoading ? (
+                    <span className="inline-flex items-center gap-1">
+                      • <Loader2 className="w-3 h-3 animate-spin" /> memuat data...
+                    </span>
+                  ) : totalCocok > MAKS_TITIK_PETA ? (
+                    `• menampilkan ${filteredDisasters.length.toLocaleString('id-ID')} kejadian terbaru dari ${totalCocok.toLocaleString('id-ID')} (persempit dengan filter)`
+                  ) : (
+                    `• ${filteredDisasters.length.toLocaleString('id-ID')} titik kejadian terpantau`
+                  )}
                 </span>
               </div>
               <div className="text-[11px] text-on-surface-variant font-medium hidden sm:block">
@@ -129,7 +220,7 @@ export const PetaBencanaPage: React.FC<PetaBencanaPageProps> = ({ onNavigate, di
             <InteractiveLeafletMap
               disasters={filteredDisasters}
               selectedDisaster={selectedDisaster}
-              onSelectDisaster={(disaster) => setSelectedDisaster(disaster)}
+              onSelectDisaster={setSelectedDisaster}
               mapHeightClass="min-h-[600px] h-[640px]"
             />
           </div>

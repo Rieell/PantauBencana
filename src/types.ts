@@ -41,6 +41,8 @@ export interface DisasterRecord {
   korbanLuka?: number;
   korbanHilang?: number;
   rumahRusak?: number;
+  rumahTerendam?: number;
+  fasilitasRusak?: number;
   tingkatRisiko?: 'Tinggi' | 'Sedang' | 'Rendah';
   deskripsiDetail?: string;
 }
@@ -50,7 +52,7 @@ export interface UserAccount {
   nama: string;
   email: string;
   peran: 'Admin' | 'User';
-  tanggalRegister: string;
+  tanggalRegister: string; // ISO dari database
   instansi?: string;
   avatarColor?: string;
   status?: 'Aktif' | 'Ditangguhkan';

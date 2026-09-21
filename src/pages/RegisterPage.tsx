@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { PageId, UserAccount } from '../types';
-import { Shield, Lock, Eye, EyeOff, User, Mail, CheckCircle2, ArrowLeft, ArrowRight, UserPlus } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, User, Mail, CheckCircle2, ArrowLeft, UserPlus } from 'lucide-react';
+import { api, pesanError } from '../lib/api';
 
 interface RegisterPageProps {
   onNavigate: (page: PageId) => void;
-  onRegisterSuccess: (user: UserAccount) => void;
 }
 
-export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate, onRegisterSuccess }) => {
+export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,7 +15,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate, onRegist
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [agreedTerms, setAgreedTerms] = useState(false);
-  const [roleMode, setRoleMode] = useState<'citizen' | 'volunteer'>('citizen');
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -33,7 +32,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate, onRegist
 
   const strengthScore = getPasswordStrength();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -51,25 +50,19 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate, onRegist
     }
 
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      const newUser: UserAccount = {
-        id: `USR-${Date.now().toString().slice(-4)}`,
-        nama: fullName,
-        email: email,
-        peran: 'User',
-        tanggalRegister: `${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}, ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`,
-        instansi: roleMode === 'citizen' ? 'Warga Publik' : 'Relawan Kebencanaan',
-        avatarColor: 'bg-primary text-white',
-        status: 'Aktif'
-      };
-
-      onRegisterSuccess(newUser);
+    try {
+      // Akun disimpan ke tabel users di database (peran otomatis "user")
+      await api<{ user: UserAccount }>('/api/auth/register', {
+        method: 'POST',
+        body: { nama: fullName.trim(), email: email.trim(), password },
+      });
       setSuccessMessage('Pendaftaran Berhasil! Anda sekarang dapat masuk ke akun PantauBencana.');
-      setTimeout(() => {
-        onNavigate('login');
-      }, 1500);
-    }, 1000);
+      setTimeout(() => onNavigate('login'), 1500);
+    } catch (err) {
+      setErrorMessage(pesanError(err));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -102,32 +95,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate, onRegist
             <p className="font-body-sm text-body-sm text-on-surface-variant max-w-md leading-relaxed">
               Daftar untuk memantau risiko banjir &amp; longsor di wilayah Anda, simpan filter pencarian, dan dapatkan notifikasi waspada dini.
             </p>
-          </div>
-
-          {/* Role selector pill */}
-          <div className="flex bg-surface-container-low p-1 rounded-xl mb-5 border border-surface-container">
-            <button
-              type="button"
-              onClick={() => setRoleMode('citizen')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                roleMode === 'citizen'
-                  ? 'bg-white text-primary shadow-xs'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              Warga / Masyarakat Umum
-            </button>
-            <button
-              type="button"
-              onClick={() => setRoleMode('volunteer')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                roleMode === 'volunteer'
-                  ? 'bg-white text-primary shadow-xs'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              Relawan / Pemerhati Bencana
-            </button>
           </div>
 
           {/* Feedback messages */}
@@ -273,7 +240,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate, onRegist
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !!successMessage}
               className="w-full h-11 flex items-center justify-center gap-2 rounded-lg bg-primary-container text-white font-title-md text-sm shadow-md hover:bg-primary transition-all duration-150 active:scale-[0.99] cursor-pointer mt-1 font-semibold disabled:opacity-75"
             >
               {isLoading ? (

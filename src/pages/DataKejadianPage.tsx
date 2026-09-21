@@ -1,78 +1,83 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { PageId, DisasterRecord } from '../types';
-import { INITIAL_DISASTERS } from '../data/mockData';
 import { DisasterCarousel } from '../components/DisasterCarousel';
-import { Search, RotateCcw, Download, Eye, Filter, X, Printer, CheckCircle, ExternalLink, AlertTriangle, Layers } from 'lucide-react';
+import { Pagination } from '../components/Pagination';
+import { JENIS_BENCANA, PROVINSI_38, TAHUN_LIST, PAGE_SIZE } from '../data/constants';
+import { fetchDisasters, pesanError, unduh, urlEkspor } from '../lib/api';
+import { formatAngka, useDebounced, useSummary } from '../lib/hooks';
+import { Search, RotateCcw, Download, Eye, X, Printer, CheckCircle, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
 
 interface DataKejadianPageProps {
   onNavigate: (page: PageId) => void;
-  disasters: DisasterRecord[];
 }
 
-export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, disasters }) => {
+export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [provinceFilter, setProvinceFilter] = useState('all');
-  const [yearFilter, setYearFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [provinceFilter, setProvinceFilter] = useState('');
+  const [yearFilter, setYearFilter] = useState('');
   const [emptySimActive, setEmptySimActive] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<DisasterRecord | null>(null);
   const [currentPageNum, setCurrentPageNum] = useState(1);
 
-  // Filter disaster data
-  const filteredDisasters = disasters.filter((item) => {
-    if (emptySimActive) return false;
+  const [rows, setRows] = useState<DisasterRecord[]>([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
-    const matchesSearch =
-      !searchQuery ||
-      item.kabupatenKota.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.provinsi.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.ringkasanDampak.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.penyebab.toLowerCase().includes(searchQuery.toLowerCase());
+  const summary = useSummary();
+  const debouncedSearch = useDebounced(searchQuery);
+  const filters = { q: debouncedSearch, jenis: typeFilter, provinsi: provinceFilter, tahun: yearFilter };
 
-    const matchesType =
-      typeFilter === 'all' || item.jenis.toLowerCase().includes(typeFilter.toLowerCase());
+  // Pindah ke halaman 1 setiap kali filter berubah
+  useEffect(() => {
+    setCurrentPageNum(1);
+  }, [debouncedSearch, typeFilter, provinceFilter, yearFilter]);
 
-    const matchesProvince =
-      provinceFilter === 'all' || item.provinsi.toLowerCase().includes(provinceFilter.toLowerCase());
+  // Ambil 10 kejadian per halaman dari database
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsLoading(true);
+    setErrorMessage('');
+    fetchDisasters(
+      { q: debouncedSearch, jenis: typeFilter, provinsi: provinceFilter, tahun: yearFilter },
+      currentPageNum,
+      PAGE_SIZE,
+      { signal: controller.signal }
+    )
+      .then((res) => {
+        setRows(res.data);
+        setTotalRows(res.total);
+        setTotalPages(res.totalPages);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        if ((err as Error).name === 'AbortError') return;
+        setErrorMessage(pesanError(err));
+        setRows([]);
+        setTotalRows(0);
+        setTotalPages(1);
+        setIsLoading(false);
+      });
+    return () => controller.abort();
+  }, [debouncedSearch, typeFilter, provinceFilter, yearFilter, currentPageNum]);
 
-    const matchesYear =
-      yearFilter === 'all' || item.tanggalIso.startsWith(yearFilter);
-
-    return matchesSearch && matchesType && matchesProvince && matchesYear;
-  });
+  const displayedRows = emptySimActive ? [] : rows;
+  const startRow = totalRows === 0 ? 0 : (currentPageNum - 1) * PAGE_SIZE + 1;
+  const endRow = Math.min(currentPageNum * PAGE_SIZE, totalRows);
 
   const resetFilters = () => {
     setSearchQuery('');
-    setTypeFilter('all');
-    setProvinceFilter('all');
-    setYearFilter('all');
+    setTypeFilter('');
+    setProvinceFilter('');
+    setYearFilter('');
     setEmptySimActive(false);
     setCurrentPageNum(1);
   };
 
-  const handleDownloadCsv = () => {
-    const headers = ['ID', 'Tanggal', 'Jenis', 'Kabupaten/Kota', 'Provinsi', 'Ringkasan Dampak', 'Penyebab', 'Latitude', 'Longitude'];
-    const rows = filteredDisasters.map((d) => [
-      d.id,
-      `"${d.tanggal}"`,
-      `"${d.jenis}"`,
-      `"${d.kabupatenKota}"`,
-      `"${d.provinsi}"`,
-      `"${d.ringkasanDampak.replace(/"/g, '""')}"`,
-      `"${d.penyebab.replace(/"/g, '""')}"`,
-      d.latitude,
-      d.longitude,
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'pantaubencana_data_kejadian.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  // Ekspor CSV semua hasil filter (bukan hanya halaman yang tampil)
+  const handleDownloadCsv = () => unduh(urlEkspor(filters));
 
   return (
     <div className="flex flex-col w-full">
@@ -121,7 +126,7 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
                   <span className="font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider block">
                     Total Kejadian
                   </span>
-                  <div className="font-headline-lg text-2xl font-bold text-primary mt-1">28.773</div>
+                  <div className="font-headline-lg text-2xl font-bold text-primary mt-1">{formatAngka(summary?.total)}</div>
                   <p className="font-body-sm text-xs text-on-surface-variant">Kejadian tercatat</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center text-white shrink-0">
@@ -141,7 +146,7 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
                   <span className="font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider block">
                     Korban Jiwa &amp; Hilang
                   </span>
-                  <div className="font-headline-lg text-2xl font-bold text-red-600 mt-1">4.829</div>
+                  <div className="font-headline-lg text-2xl font-bold text-red-600 mt-1">{formatAngka(summary ? summary.meninggal + summary.hilang : null)}</div>
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded bg-red-100 text-red-800 text-[11px] font-semibold">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
                     <span>Meninggal &amp; Hilang</span>
@@ -166,7 +171,7 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
                   <span className="font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider block">
                     Luka-Luka
                   </span>
-                  <div className="font-headline-lg text-2xl font-bold text-[#5a2500] mt-1">18.240</div>
+                  <div className="font-headline-lg text-2xl font-bold text-[#5a2500] mt-1">{formatAngka(summary?.luka)}</div>
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded bg-[#ffdbca] text-[#763300] text-[11px] font-semibold">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#5a2500]"></span>
                     <span>Jiwa terdampak fisik</span>
@@ -188,7 +193,7 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
                   <span className="font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider block">
                     Bangunan Terdampak
                   </span>
-                  <div className="font-headline-lg text-2xl font-bold text-secondary mt-1">342.180</div>
+                  <div className="font-headline-lg text-2xl font-bold text-secondary mt-1">{formatAngka(summary ? summary.rumahRusak + summary.rumahTerendam + summary.fasilitasRusak : null)}</div>
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded bg-secondary-fixed text-secondary text-[11px] font-semibold">
                     <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
                     <span>Unit infrastruktur</span>
@@ -228,51 +233,54 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
               />
             </div>
 
-            {/* Disaster Type Filter */}
+            {/* Disaster Type Filter (13 jenis) */}
             <div className="lg:col-span-2">
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
                 className="w-full px-3 py-2 bg-surface-container-low rounded-lg text-xs text-on-surface focus:outline-none border border-surface-container cursor-pointer"
+                aria-label="Filter jenis bencana"
               >
-                <option value="all">Semua Jenis Bencana</option>
-                <option value="banjir">Banjir</option>
-                <option value="longsor">Tanah Longsor</option>
-                <option value="cuaca">Cuaca Ekstrem</option>
-                <option value="pasang">Gelombang Pasang</option>
+                <option value="">Semua Jenis Bencana</option>
+                {JENIS_BENCANA.map((j) => (
+                  <option key={j} value={j}>
+                    {j}
+                  </option>
+                ))}
               </select>
             </div>
 
-            {/* Province Filter */}
+            {/* Province Filter (38 provinsi) */}
             <div className="lg:col-span-2">
               <select
                 value={provinceFilter}
                 onChange={(e) => setProvinceFilter(e.target.value)}
                 className="w-full px-3 py-2 bg-surface-container-low rounded-lg text-xs text-on-surface focus:outline-none border border-surface-container cursor-pointer"
+                aria-label="Filter provinsi"
               >
-                <option value="all">Semua Provinsi</option>
-                <option value="Jawa Tengah">Jawa Tengah</option>
-                <option value="Jawa Barat">Jawa Barat</option>
-                <option value="Jawa Timur">Jawa Timur</option>
-                <option value="Sulawesi Selatan">Sulawesi Selatan</option>
-                <option value="Sumatera Barat">Sumatera Barat</option>
-                <option value="Jambi">Jambi</option>
+                <option value="">Semua Provinsi</option>
+                {PROVINSI_38.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
               </select>
             </div>
 
-            {/* Year Filter */}
+            {/* Year Filter (2018 - 2024) */}
             <div className="lg:col-span-2">
               <select
                 value={yearFilter}
                 onChange={(e) => setYearFilter(e.target.value)}
                 className="w-full px-3 py-2 bg-surface-container-low rounded-lg text-xs text-on-surface focus:outline-none border border-surface-container cursor-pointer"
+                aria-label="Filter tahun"
               >
-                <option value="all">Semua Tahun (2018-2024)</option>
-                <option value="2024">2024</option>
-                <option value="2023">2023</option>
-                <option value="2022">2022</option>
-                <option value="2021">2021</option>
-                <option value="2020">2020</option>
+                <option value="">Semua Tahun (2018-2024)</option>
+                {TAHUN_LIST.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -295,9 +303,9 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
               <span className="text-xs text-on-surface">
                 Menampilkan{' '}
                 <span className="font-bold text-primary">
-                  {filteredDisasters.length > 0 ? `1 - ${filteredDisasters.length}` : '0'}
+                  {emptySimActive || totalRows === 0 ? '0' : `${formatAngka(startRow)} - ${formatAngka(endRow)}`}
                 </span>{' '}
-                dari <span className="font-bold text-on-surface">14.820</span> Data Kejadian Terverifikasi
+                dari <span className="font-bold text-on-surface">{emptySimActive ? '0' : formatAngka(totalRows)}</span> Data Kejadian Terverifikasi
               </span>
             </div>
 
@@ -327,7 +335,19 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
         </div>
 
         {/* 4. Table or Empty State */}
-        {filteredDisasters.length === 0 ? (
+        {errorMessage && (
+          <div className="p-3 rounded-lg bg-red-50 text-red-800 text-xs flex items-center gap-2 border border-red-200">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {isLoading && rows.length === 0 ? (
+          <div className="bg-white rounded-2xl p-10 shadow-sm border border-surface-container flex items-center justify-center gap-2 text-xs text-on-surface-variant">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Memuat data kejadian dari database...</span>
+          </div>
+        ) : displayedRows.length === 0 ? (
           /* Empty State */
           <div className="bg-white rounded-2xl p-10 shadow-sm border border-surface-container flex flex-col items-center justify-center text-center max-w-2xl mx-auto w-full my-4">
             <div className="w-16 h-16 rounded-full bg-surface-container-low flex items-center justify-center text-secondary mb-3">
@@ -361,12 +381,11 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
                     <th className="py-3 px-4">Kabupaten / Kota</th>
                     <th className="py-3 px-4">Provinsi</th>
                     <th className="py-3 px-4">Ringkasan Dampak</th>
-                    <th className="py-3 px-4">Penyebab</th>
                     <th className="py-3 px-4 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-low">
-                  {filteredDisasters.map((incident) => {
+                  {displayedRows.map((incident) => {
                     const isLongsor = incident.jenis.toLowerCase().includes('longsor');
                     return (
                       <tr
@@ -395,12 +414,6 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
                         </td>
                         <td className="py-3.5 px-4 max-w-xs">
                           <div className="font-bold text-on-surface">{incident.ringkasanDampak}</div>
-                          <div className="text-[11px] text-on-surface-variant truncate">
-                            {incident.deskripsiDetail}
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-on-surface-variant whitespace-nowrap">
-                          {incident.penyebab}
                         </td>
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                           <button
@@ -422,56 +435,14 @@ export const DataKejadianPage: React.FC<DataKejadianPageProps> = ({ onNavigate, 
 
             {/* Pagination footer */}
             <div className="p-4 bg-white border-t border-surface-container flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-              <div className="text-on-surface-variant">
-                Halaman <span className="font-bold text-on-surface">{currentPageNum}</span> dari{' '}
-                <span className="font-bold text-on-surface">1.482</span>
+              <div className="text-on-surface-variant flex items-center gap-2">
+                {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>
+                  Halaman <span className="font-bold text-on-surface">{formatAngka(currentPageNum)}</span> dari{' '}
+                  <span className="font-bold text-on-surface">{formatAngka(totalPages)}</span>
+                </span>
               </div>
-              <nav className="flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentPageNum((p) => Math.max(p - 1, 1))}
-                  disabled={currentPageNum === 1}
-                  className="px-3 py-1.5 rounded-lg bg-surface-container-low text-on-surface-variant hover:text-on-surface font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  Sebelumnya
-                </button>
-                <button
-                  onClick={() => setCurrentPageNum(1)}
-                  className={`w-8 h-8 rounded-lg font-bold cursor-pointer ${
-                    currentPageNum === 1 ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface'
-                  }`}
-                >
-                  1
-                </button>
-                <button
-                  onClick={() => setCurrentPageNum(2)}
-                  className={`w-8 h-8 rounded-lg font-bold cursor-pointer ${
-                    currentPageNum === 2 ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface'
-                  }`}
-                >
-                  2
-                </button>
-                <button
-                  onClick={() => setCurrentPageNum(3)}
-                  className={`w-8 h-8 rounded-lg font-bold cursor-pointer ${
-                    currentPageNum === 3 ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface'
-                  }`}
-                >
-                  3
-                </button>
-                <span className="px-1 text-outline">...</span>
-                <button
-                  onClick={() => setCurrentPageNum(1482)}
-                  className="w-10 h-8 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-semibold cursor-pointer"
-                >
-                  1482
-                </button>
-                <button
-                  onClick={() => setCurrentPageNum((p) => p + 1)}
-                  className="px-3 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-on-surface font-semibold cursor-pointer"
-                >
-                  Selanjutnya
-                </button>
-              </nav>
+              <Pagination page={currentPageNum} totalPages={totalPages} onChange={setCurrentPageNum} disabled={isLoading} />
             </div>
           </div>
         )}

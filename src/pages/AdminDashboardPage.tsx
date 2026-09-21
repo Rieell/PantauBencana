@@ -1,24 +1,27 @@
 import React, { useState } from 'react';
-import { PageId, DisasterRecord, CsvImportLog } from '../types';
+import { PageId, DisasterRecord, CsvImportLog, UserAccount } from '../types';
+import { JENIS_BENCANA, PROVINSI_38 } from '../data/constants';
+import { pesanError } from '../lib/api';
 import { INITIAL_CSV_LOGS } from '../data/mockData';
 import { Shield, Plus, Upload, Download, FileText, CheckCircle2, AlertTriangle, TrendingUp, Users, Database, Clock, RefreshCw, X, Save } from 'lucide-react';
 
 interface AdminDashboardPageProps {
   onNavigate: (page: PageId) => void;
   disasters: DisasterRecord[];
-  onAddDisaster: (newRecord: DisasterRecord) => void;
+  onAddDisaster: (newRecord: DisasterRecord) => void | Promise<void>;
+  currentUser?: UserAccount | null;
 }
 
-export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNavigate, disasters, onAddDisaster }) => {
+export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNavigate, disasters, onAddDisaster, currentUser }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [filterChartType, setFilterChartType] = useState<'all' | 'banjir' | 'longsor'>('all');
 
   // Form state for new disaster
-  const [jenis, setJenis] = useState('Banjir');
+  const [jenis, setJenis] = useState(JENIS_BENCANA[0]);
   const [tanggal, setTanggal] = useState('2024-06-12');
   const [waktu, setWaktu] = useState('08:30 WIB');
-  const [provinsi, setProvinsi] = useState('Jawa Tengah');
+  const [provinsi, setProvinsi] = useState(PROVINSI_38.includes('Jawa Tengah') ? 'Jawa Tengah' : PROVINSI_38[0]);
   const [kabupatenKota, setKabupatenKota] = useState('');
   const [koordinat, setKoordinat] = useState('-6.8943, 110.6385');
   const [statusVerifikasi, setStatusVerifikasi] = useState<'Terverifikasi Otoritas PantauBencana' | 'Validasi Analis Penuh' | 'Menunggu Validasi Lapangan'>('Terverifikasi Otoritas PantauBencana');
@@ -34,7 +37,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
     }, 4000);
   };
 
-  const handleSaveDisaster = (e: React.FormEvent) => {
+  const handleSaveDisaster = async (e: React.FormEvent) => {
     e.preventDefault();
     const parts = koordinat.split(',').map((p) => parseFloat(p.trim()));
     const lat = isNaN(parts[0]) ? -7.0 : parts[0];
@@ -59,7 +62,12 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
       deskripsiDetail: `Input data dari administrator melalui portal operasional. ${dampak}`,
     };
 
-    onAddDisaster(newRecord);
+    try {
+      await onAddDisaster(newRecord);
+    } catch (err) {
+      showToast(`Gagal menyimpan: ${pesanError(err)}`);
+      return;
+    }
     setModalOpen(false);
     showToast('Data kejadian bencana baru berhasil disimpan dan masuk ke basis data!');
     // Reset
@@ -96,9 +104,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
             </div>
 
             <h1 className="font-headline-lg text-2xl sm:text-3xl text-on-surface font-bold tracking-tight">
-              Selamat Datang kembali, Adi Putra
+              Selamat Datang kembali, {currentUser?.nama || 'Administrator'}
               <span className="text-sm text-secondary block sm:inline sm:ml-2 font-normal">
-                (Tim Administrator Pusat)
+                (Administrator)
               </span>
             </h1>
 
@@ -537,12 +545,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
                     onChange={(e) => setJenis(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container focus:outline-none focus:bg-white text-xs"
                   >
-                    <option value="Banjir">Banjir Luapan / Genangan</option>
-                    <option value="Tanah Longsor">Gerakan Tanah / Longsor</option>
-                    <option value="Banjir Bandang">Banjir Bandang</option>
-                    <option value="Cuaca Ekstrem">Cuaca Ekstrem / Puting Beliung</option>
-                    <option value="Gelombang Pasang / Abrasi">Gelombang Pasang / Rob</option>
-                    <option value="Erupsi Gunung Api">Erupsi Gunung Api</option>
+                    {JENIS_BENCANA.map((j) => (
+                      <option key={j} value={j}>
+                        {j}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -566,13 +573,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ onNaviga
                     onChange={(e) => setProvinsi(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container focus:outline-none focus:bg-white text-xs"
                   >
-                    <option>Jawa Tengah</option>
-                    <option>Jawa Barat</option>
-                    <option>Jawa Timur</option>
-                    <option>Sulawesi Selatan</option>
-                    <option>Sumatera Barat</option>
-                    <option>Jambi</option>
-                    <option>Papua</option>
+                    {PROVINSI_38.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

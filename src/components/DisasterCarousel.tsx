@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { INITIAL_DISASTER_STATS } from '../data/mockData';
+import { DisasterStat } from '../types';
+import { api } from '../lib/api';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -19,7 +21,29 @@ interface DisasterCarouselProps {
 }
 
 export const DisasterCarousel: React.FC<DisasterCarouselProps> = ({ onSelectCategory, selectedCategory }) => {
-  const items = INITIAL_DISASTER_STATS;
+  // Angka per jenis diambil dari database; kalau backend belum jalan tetap memakai angka bawaan
+  const [items, setItems] = useState<DisasterStat[]>(INITIAL_DISASTER_STATS);
+  useEffect(() => {
+    let batal = false;
+    api<{ jenis: string; total: number }[]>('/api/stats')
+      .then((rows) => {
+        if (batal) return;
+        const perJenis = new Map(rows.map((r) => [r.jenis.toLowerCase(), r.total]));
+        const total = rows.reduce((a, r) => a + r.total, 0) || 1;
+        setItems(
+          INITIAL_DISASTER_STATS.map((it) => {
+            const n = perJenis.get(it.name.toLowerCase()) ?? 0;
+            const p = (n / total) * 100;
+            return { ...it, numericCount: n, count: n.toLocaleString('id-ID'), pct: p >= 1 ? `${p.toFixed(1)}%` : `${p.toFixed(2)}%` };
+          })
+        );
+      })
+      .catch(() => {});
+    return () => {
+      batal = true;
+    };
+  }, []);
+
   const n = items.length; // 13 items
   // Extended array for seamless sliding
   const extendedItems = [...items, ...items, ...items];

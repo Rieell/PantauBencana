@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PageId, DisasterRecord, UserAccount } from './types';
-import { INITIAL_DISASTERS, INITIAL_USERS } from './data/mockData';
+import { INITIAL_DISASTERS } from './data/mockData';
+import { api, AUTH_EXPIRED_EVENT, clearToken, DisasterPayload, getToken, Paginated, simpanDisaster } from './lib/api';
 
 // Public Components
 import { Navbar } from './components/Navbar';
@@ -28,62 +29,89 @@ export default function App() {
   const [adminSidebarOpen, setAdminSidebarOpen] = useState(true);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
 
-  // App Data State
+  // Data kejadian terbaru (untuk Dashboard). Tabel & peta mengambil datanya sendiri dari database.
   const [disasters, setDisasters] = useState<DisasterRecord[]>(INITIAL_DISASTERS);
 
-  // Ambil data kejadian dari MySQL (database data_bencana) lewat backend Express.
-  // Kalau backend belum jalan, tetap pakai data contoh (INITIAL_DISASTERS).
-  useEffect(() => {
-    fetch('/api/disasters?limit=1000')
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then((data: DisasterRecord[]) => {
-        if (Array.isArray(data) && data.length > 0) setDisasters(data);
+  const refreshDisasters = () => {
+    api<Paginated<DisasterRecord>>('/api/disasters?page=1&pageSize=20')
+      .then((res) => {
+        if (res.data.length > 0) setDisasters(res.data);
       })
       .catch((err) => console.warn('Gagal memuat data dari database, pakai data contoh:', err));
+  };
+
+  useEffect(() => {
+    refreshDisasters();
   }, []);
-  const [users, setUsers] = useState<UserAccount[]>(INITIAL_USERS);
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(INITIAL_USERS[0]); // Default logged in as admin for preview ease
+
+  // Sesi login: pengguna diambil dari database lewat token yang tersimpan di browser
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    if (!getToken()) {
+      setAuthChecked(true);
+      return;
+    }
+    api<{ user: UserAccount }>('/api/auth/me')
+      .then((res) => setCurrentUser(res.user))
+      .catch(() => clearToken())
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  const handleLogout = () => {
+    clearToken();
+    setCurrentUser(null);
+    setCurrentPage('login');
+  };
+
+  // Token kedaluwarsa / akun dihapus -> otomatis keluar
+  useEffect(() => {
+    const onExpired = () => {
+      setCurrentUser(null);
+      setCurrentPage('login');
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  }, []);
 
   // Scroll to top on page change
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentPage]);
 
-  // Disaster CRUD handlers
-  const handleAddDisaster = (newRecord: DisasterRecord) => {
-    setDisasters((prev) => [newRecord, ...prev]);
-  };
-
-  const handleUpdateDisaster = (updatedRecord: DisasterRecord) => {
-    setDisasters((prev) =>
-      prev.map((d) => (d.id === updatedRecord.id ? updatedRecord : d))
-    );
-  };
-
-  const handleDeleteDisaster = (id: string) => {
-    setDisasters((prev) => prev.filter((d) => d.id !== id));
-  };
-
-  // User CRUD handlers
-  const handleAddUser = (newUser: UserAccount) => {
-    setUsers((prev) => [newUser, ...prev]);
-  };
-
-  const handleUpdateUser = (updatedUser: UserAccount) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === updatedUser.id ? updatedUser : u))
-    );
-  };
-
-  const handleDeleteUser = (userId: string) => {
-    setUsers((prev) => prev.filter((u) => u.id !== userId));
+  // Tambah kejadian dari Dashboard Admin: disimpan ke database
+  const handleAddDisaster = async (newRecord: DisasterRecord) => {
+    const payload: DisasterPayload = {
+      jenis: newRecord.jenis,
+      tanggalIso: newRecord.tanggalIso,
+      kabupatenKota: newRecord.kabupatenKota,
+      provinsi: newRecord.provinsi,
+      penyebab: newRecord.penyebab,
+      korbanMeninggal: newRecord.korbanMeninggal ?? 0,
+      korbanHilang: newRecord.korbanHilang ?? 0,
+      korbanLuka: newRecord.korbanLuka ?? 0,
+      rumahRusak: newRecord.rumahRusak ?? 0,
+      rumahTerendam: newRecord.rumahTerendam ?? 0,
+      fasilitasRusak: newRecord.fasilitasRusak ?? 0,
+    };
+    await simpanDisaster(payload);
+    refreshDisasters();
   };
 
   // Page classification
-  const isAdminPage =
+  const isAdminRoute =
     currentPage === 'dashboard-admin' ||
     currentPage === 'kelola-data-admin' ||
     currentPage === 'kelola-pengguna-admin';
+
+  // Halaman admin hanya untuk akun berperan Admin; selain itu diarahkan ke halaman login
+  const adminAllowed = currentUser?.peran === 'Admin';
+  const isAdminPage = isAdminRoute && adminAllowed;
+
+  useEffect(() => {
+    if (authChecked && isAdminRoute && !adminAllowed) setCurrentPage('login');
+  }, [authChecked, isAdminRoute, adminAllowed]);
 
   const isAuthPage = currentPage === 'login' || currentPage === 'register';
 
@@ -165,7 +193,8 @@ export default function App() {
             onNavigate={setCurrentPage}
             isOpen={adminSidebarOpen}
             onClose={() => setAdminSidebarOpen(false)}
-            onLogout={() => setCurrentPage('login')}
+            onLogout={handleLogout}
+            currentUser={currentUser}
           />
 
           {/* Admin Main Content Area */}
@@ -179,7 +208,8 @@ export default function App() {
               onNavigate={setCurrentPage}
               onToggleSidebar={() => setAdminSidebarOpen(!adminSidebarOpen)}
               isSidebarOpen={adminSidebarOpen}
-              onLogout={() => setCurrentPage('login')}
+              onLogout={handleLogout}
+              currentUser={currentUser}
             />
 
             <main className="flex-1 pt-24 sm:pt-28 pb-14 px-4 sm:px-6 lg:px-8 max-w-7xl w-full mx-auto">
@@ -188,27 +218,16 @@ export default function App() {
                   onNavigate={setCurrentPage}
                   disasters={disasters}
                   onAddDisaster={handleAddDisaster}
+                  currentUser={currentUser}
                 />
               )}
 
               {currentPage === 'kelola-data-admin' && (
-                <AdminKelolaDataPage
-                  onNavigate={setCurrentPage}
-                  disasters={disasters}
-                  onAddDisaster={handleAddDisaster}
-                  onUpdateDisaster={handleUpdateDisaster}
-                  onDeleteDisaster={handleDeleteDisaster}
-                />
+                <AdminKelolaDataPage onNavigate={setCurrentPage} onDataChanged={refreshDisasters} />
               )}
 
               {currentPage === 'kelola-pengguna-admin' && (
-                <AdminKelolaPenggunaPage
-                  onNavigate={setCurrentPage}
-                  users={users}
-                  onAddUser={handleAddUser}
-                  onUpdateUser={handleUpdateUser}
-                  onDeleteUser={handleDeleteUser}
-                />
+                <AdminKelolaPenggunaPage onNavigate={setCurrentPage} />
               )}
             </main>
           </div>
@@ -221,10 +240,7 @@ export default function App() {
             currentPage={currentPage}
             onNavigate={setCurrentPage}
             currentUser={currentUser}
-            onLogout={() => {
-              setCurrentUser(null);
-              setCurrentPage('login');
-            }}
+            onLogout={handleLogout}
           />
 
           <main className="flex-1 pt-20 sm:pt-24 pb-10">
@@ -233,22 +249,15 @@ export default function App() {
             )}
 
             {currentPage === 'peta-bencana' && (
-              <PetaBencanaPage onNavigate={setCurrentPage} disasters={disasters} />
+              <PetaBencanaPage onNavigate={setCurrentPage} />
             )}
 
             {currentPage === 'data-kejadian' && (
-              <DataKejadianPage onNavigate={setCurrentPage} disasters={disasters} />
+              <DataKejadianPage onNavigate={setCurrentPage} />
             )}
 
             {currentPage === 'register' && (
-              <RegisterPage
-                onNavigate={setCurrentPage}
-                onRegisterSuccess={(newUser) => {
-                  handleAddUser(newUser);
-                  setCurrentUser(newUser);
-                  setCurrentPage('dashboard');
-                }}
-              />
+              <RegisterPage onNavigate={setCurrentPage} />
             )}
 
             {currentPage === 'login' && (

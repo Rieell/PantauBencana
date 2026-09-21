@@ -1,5 +1,5 @@
 import React from 'react';
-import { PageId } from '../types';
+import { PageId, UserAccount } from '../types';
 import { LogOut, ExternalLink, Menu } from 'lucide-react';
 
 interface AdminHeaderProps {
@@ -8,6 +8,7 @@ interface AdminHeaderProps {
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
   onLogout?: () => void;
+  currentUser?: UserAccount | null;
 }
 
 export const AdminHeader: React.FC<AdminHeaderProps> = ({ 
@@ -15,8 +16,15 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   onNavigate, 
   onToggleSidebar, 
   isSidebarOpen = true,
-  onLogout 
+  onLogout,
+  currentUser
 }) => {
+  const inisial = (currentUser?.nama || 'Admin')
+    .split(' ')
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
   return (
     <header 
       className={`fixed top-0 right-0 h-16 bg-white z-40 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-surface-container transition-all duration-500 ease-in-out ${
@@ -61,12 +69,12 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
         <div className="flex items-center gap-2.5 pl-3 border-l border-surface-container">
           <div className="text-right hidden sm:block">
             <p className="font-label-lg text-[13px] text-on-surface font-semibold leading-tight">
-              Adi Putra (Operator)
+              {currentUser?.nama || 'Administrator'}
             </p>
-            <p className="text-[11px] text-on-surface-variant">Tim Administrator Pusat</p>
+            <p className="text-[11px] text-on-surface-variant">Administrator</p>
           </div>
           <div className="w-9 h-9 rounded-full bg-primary-container text-white flex items-center justify-center font-bold text-sm shadow-xs ring-2 ring-primary/20">
-            AP
+            {inisial}
           </div>
           {onLogout && (
             <button

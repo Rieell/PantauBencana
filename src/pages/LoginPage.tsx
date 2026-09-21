@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PageId, UserAccount } from '../types';
-import { Shield, Lock, Eye, EyeOff, Mail, LogIn, ArrowLeft, CheckCircle2, UserCheck } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, Mail, LogIn, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { api, pesanError, saveToken } from '../lib/api';
 
 interface LoginPageProps {
   onNavigate: (page: PageId) => void;
@@ -8,60 +9,35 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess }) => {
-  const [email, setEmail] = useState('raditya.pratama@bnpb.go.id');
-  const [password, setPassword] = useState('admin12345');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleLogin = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  // Login ke backend: email & kata sandi dicocokkan dengan tabel users di database
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
     setErrorMessage('');
     setIsLoading(true);
-    setStatusText('Memverifikasi kredensial otoritas pusat...');
+    setStatusText('Memverifikasi kredensial...');
 
-    setTimeout(() => {
-      setIsLoading(false);
-      const isAdmin = email.includes('pantaubencana.id') || email.includes('admin');
-      const user: UserAccount = {
-        id: isAdmin ? 'USR-001' : 'USR-003',
-        nama: isAdmin ? 'Dr. Raditya Pratama' : 'Budi Santoso',
-        email: email,
-        peran: isAdmin ? 'Admin' : 'User',
-        tanggalRegister: '12 Jan 2024',
-        instansi: isAdmin ? 'Tim Administrator Pusat' : 'Masyarakat Umum',
-        avatarColor: isAdmin ? 'bg-[#00288e] text-white' : 'bg-[#e6eeff] text-[#0d1c2e]',
-        status: 'Aktif'
-      };
-
-      onLoginSuccess(user);
+    try {
+      const res = await api<{ token: string; user: UserAccount }>('/api/auth/login', {
+        method: 'POST',
+        body: { email: email.trim(), password, remember: rememberMe },
+      });
+      saveToken(res.token, rememberMe);
       setStatusText('Sesi terautentikasi. Mengarahkan ke Dashboard...');
-      setTimeout(() => {
-        if (isAdmin) {
-          onNavigate('dashboard-admin');
-        } else {
-          onNavigate('beranda');
-        }
-      }, 700);
-    }, 900);
-  };
-
-  const handleDemoAdmin = () => {
-    setEmail('admin@pantaubencana.id');
-    setPassword('admin12345');
-    setTimeout(() => {
-      handleLogin();
-    }, 100);
-  };
-
-  const handleDemoUser = () => {
-    setEmail('budi.santoso@email.com');
-    setPassword('user12345');
-    setTimeout(() => {
-      handleLogin();
-    }, 100);
+      onLoginSuccess(res.user);
+    } catch (err) {
+      setStatusText('');
+      setErrorMessage(pesanError(err));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -94,31 +70,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
             <p className="font-body-md text-xs text-on-surface-variant max-w-sm">
               Masuk untuk mengakses laporan bencana, pemantauan wilayah, dan layanan PantauBencana.
             </p>
-          </div>
-
-          {/* Quick Demo Login Preset Buttons */}
-          <div className="p-2.5 rounded-xl bg-surface-container-low border border-surface-container flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div className="text-[11px] text-on-surface-variant font-medium text-left">
-              <span className="font-semibold text-on-surface">Uji Coba Cepat:</span>
-            </div>
-            <div className="flex items-center gap-1.5 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={handleDemoAdmin}
-                className="flex-1 sm:flex-none text-[11px] px-2.5 py-1.5 bg-primary text-white rounded-lg font-semibold hover:bg-primary-container transition-colors flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Shield className="w-3 h-3" />
-                <span>Akun Administrator</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleDemoUser}
-                className="flex-1 sm:flex-none text-[11px] px-2.5 py-1.5 bg-white border border-surface-container text-on-surface rounded-lg font-semibold hover:bg-surface-container transition-colors flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <UserCheck className="w-3 h-3 text-secondary" />
-                <span>Akun Pengguna</span>
-              </button>
-            </div>
           </div>
 
           {/* Error message */}
@@ -171,7 +122,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                 </label>
                 <button
                   type="button"
-                  onClick={() => alert('Fitur pemulihan kata sandi telah dikirim ke email terdaftar.')}
+                  onClick={() => alert('Untuk mengatur ulang kata sandi, silakan hubungi administrator PantauBencana.')}
                   className="text-xs text-secondary hover:underline cursor-pointer"
                 >
                   Lupa kata sandi?

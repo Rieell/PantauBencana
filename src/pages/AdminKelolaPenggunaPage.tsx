@@ -1,27 +1,53 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { PageId, UserAccount } from '../types';
-import { INITIAL_USERS } from '../data/mockData';
-import { Search, Plus, Download, KeyRound, CheckCircle2, RotateCcw, X, UserCheck, Shield, Users, Lock, Save, Trash2 } from 'lucide-react';
+import { Pagination } from '../components/Pagination';
+import { PAGE_SIZE } from '../data/constants';
+import { api, pesanError, UserPage } from '../lib/api';
+import { formatAngka, useDebounced } from '../lib/hooks';
+import { Search, Plus, Download, KeyRound, CheckCircle2, RotateCcw, X, UserCheck, Shield, Users, Lock, Save, Eye, EyeOff, Loader2, AlertTriangle } from 'lucide-react';
 
 interface AdminKelolaPenggunaPageProps {
   onNavigate: (page: PageId) => void;
-  users: UserAccount[];
-  onAddUser: (newUser: UserAccount) => void;
-  onUpdateUser: (updatedUser: UserAccount) => void;
-  onDeleteUser: (userId: string) => void;
 }
 
-export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = ({
-  onNavigate,
-  users,
-  onAddUser,
-  onUpdateUser,
-  onDeleteUser,
-}) => {
+// Warna avatar ditentukan dari ID supaya konsisten untuk tiap akun
+const AVATAR_COLORS = [
+  'bg-[#00288e] text-white',
+  'bg-[#5bb8fe] text-[#001d31]',
+  'bg-[#7d3600] text-white',
+  'bg-[#1e40af] text-white',
+  'bg-[#006398] text-white',
+];
+const warnaAvatar = (id: string) => AVATAR_COLORS[(parseInt(id, 10) || 0) % AVATAR_COLORS.length];
+
+const formatTanggal = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}, ${d.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
+};
+
+export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = ({ onNavigate }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'admin' | 'user'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [currentPageNum, setCurrentPageNum] = useState(1);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Data pengguna dari tabel users (10 baris per halaman)
+  const [users, setUsers] = useState<UserAccount[]>([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [counts, setCounts] = useState({ semua: 0, admin: 0, user: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const debouncedSearch = useDebounced(searchQuery);
+  // Tab punya prioritas; kalau tab "Semua", dropdown peran yang dipakai
+  const roleParam = activeTab !== 'all' ? activeTab : roleFilter.toLowerCase();
 
   // Modal Reset Password
   const [resetTarget, setResetTarget] = useState<UserAccount | null>(null);
@@ -30,8 +56,11 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [newNama, setNewNama] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [newPeran, setNewPeran] = useState<'Admin' | 'User'>('User');
-  const [newInstansi, setNewInstansi] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -40,22 +69,39 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
     }, 4500);
   };
 
-  const filteredUsers = users.filter((u) => {
-    if (activeTab === 'admin' && u.peran !== 'Admin') return false;
-    if (activeTab === 'user' && u.peran !== 'User') return false;
+  useEffect(() => {
+    setCurrentPageNum(1);
+  }, [debouncedSearch, roleParam]);
 
-    if (roleFilter && u.peran.toLowerCase() !== roleFilter.toLowerCase()) return false;
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsLoading(true);
+    setErrorMessage('');
+    const query = new URLSearchParams({ page: String(currentPageNum), pageSize: String(PAGE_SIZE) });
+    if (roleParam) query.set('role', roleParam);
+    if (debouncedSearch.trim()) query.set('q', debouncedSearch.trim());
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return (
-        u.nama.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        u.id.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+    api<UserPage>(`/api/users?${query.toString()}`, { signal: controller.signal })
+      .then((res) => {
+        setUsers(res.data);
+        setTotalRows(res.total);
+        setTotalPages(res.totalPages);
+        setCounts(res.counts);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        if ((err as Error).name === 'AbortError') return;
+        setErrorMessage(pesanError(err));
+        setUsers([]);
+        setTotalRows(0);
+        setTotalPages(1);
+        setIsLoading(false);
+      });
+    return () => controller.abort();
+  }, [currentPageNum, roleParam, debouncedSearch, refreshTick]);
+
+  const startRow = totalRows === 0 ? 0 : (currentPageNum - 1) * PAGE_SIZE + 1;
+  const endRow = Math.min(currentPageNum * PAGE_SIZE, totalRows);
 
   const handleResetPassword = () => {
     if (!resetTarget) return;
@@ -63,67 +109,71 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
     setResetTarget(null);
   };
 
-  const handleCreateUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNama || !newEmail) return;
-
-    const initials = newNama
-      .split(' ')
-      .map((n) => n[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-
-    const colors = [
-      'bg-[#00288e] text-white',
-      'bg-[#5bb8fe] text-[#001d31]',
-      'bg-[#7d3600] text-white',
-      'bg-[#1e40af] text-white',
-      'bg-[#006398] text-white',
-    ];
-    const pickedColor = colors[Math.floor(Math.random() * colors.length)];
-
-    const newUser: UserAccount = {
-      id: `USR-${Date.now().toString().slice(-4)}`,
-      nama: newNama,
-      email: newEmail,
-      peran: newPeran,
-      tanggalRegister: `${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}, ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`,
-      instansi: newInstansi || (newPeran === 'Admin' ? 'Tim Pemantau Wilayah' : 'Masyarakat Publik'),
-      avatarColor: pickedColor,
-      status: 'Aktif',
-    };
-
-    onAddUser(newUser);
-    setCreateModalOpen(false);
+  const openCreateModal = () => {
     setNewNama('');
     setNewEmail('');
-    setNewInstansi('');
-    showToast(`Akun pengguna baru ${newUser.nama} berhasil ditambahkan!`);
+    setNewPassword('');
+    setShowNewPassword(false);
+    setNewPeran('User');
+    setCreateError('');
+    setCreateModalOpen(true);
   };
 
-  const adminCount = users.filter((u) => u.peran === 'Admin').length;
-  const userCount = users.filter((u) => u.peran === 'User').length;
+  const closeCreateModal = () => {
+    if (!isSaving) setCreateModalOpen(false);
+  };
 
-  const handleExportUsers = () => {
-    const headers = ['ID', 'Nama', 'Email', 'Peran', 'Tanggal Register', 'Instansi'];
-    const rows = filteredUsers.map((u) => [
-      u.id,
-      `"${u.nama}"`,
-      `"${u.email}"`,
-      u.peran,
-      `"${u.tanggalRegister}"`,
-      `"${u.instansi || ''}"`,
-    ]);
+  // Simpan akun baru ke tabel users di database
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateError('');
+    if (newPassword.length < 8) {
+      setCreateError('Kata sandi minimal 8 karakter.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const created = await api<UserAccount>('/api/users', {
+        method: 'POST',
+        body: { nama: newNama.trim(), email: newEmail.trim(), password: newPassword, peran: newPeran },
+      });
+      setCreateModalOpen(false);
+      showToast(`Akun pengguna baru ${created.nama} berhasil ditambahkan ke database!`);
+      // Tampilkan pengguna terbaru di halaman pertama
+      setActiveTab('all');
+      setRoleFilter('');
+      setSearchQuery('');
+      setCurrentPageNum(1);
+      setRefreshTick((t) => t + 1);
+    } catch (err) {
+      setCreateError(pesanError(err));
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'pantau_bencana_pengguna.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Ekspor semua pengguna sesuai filter (bukan hanya halaman yang tampil)
+  const handleExportUsers = async () => {
+    try {
+      const query = new URLSearchParams({ page: '1', pageSize: '1000' });
+      if (roleParam) query.set('role', roleParam);
+      if (debouncedSearch.trim()) query.set('q', debouncedSearch.trim());
+      const res = await api<UserPage>(`/api/users?${query.toString()}`);
+
+      const headers = ['ID', 'Nama', 'Email', 'Peran', 'Tanggal Register'];
+      const csvRows = res.data.map((u) => [u.id, `"${u.nama.replace(/"/g, '""')}"`, `"${u.email}"`, u.peran, `"${formatTanggal(u.tanggalRegister)}"`]);
+      const csvContent = '\uFEFF' + [headers.join(','), ...csvRows.map((r) => r.join(','))].join('\r\n');
+      const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'pantau_bencana_pengguna.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      showToast(`Gagal mengekspor: ${pesanError(err)}`);
+    }
   };
 
   return (
@@ -167,7 +217,7 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
           </button>
 
           <button
-            onClick={() => setCreateModalOpen(true)}
+            onClick={openCreateModal}
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary-container text-white hover:bg-primary transition-colors text-xs font-semibold shadow-md cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -189,11 +239,11 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
           </div>
           <div className="mt-3">
             <div className="font-headline-lg text-2xl sm:text-3xl text-on-surface font-bold">
-              {users.length + 1420} <span className="text-xs font-normal text-on-surface-variant">Akun</span>
+              {formatAngka(counts.semua)} <span className="text-xs font-normal text-on-surface-variant">Akun</span>
             </div>
             <div className="flex items-center gap-1.5 mt-1 text-xs text-secondary font-semibold">
-              <span className="material-symbols-outlined text-sm">trending_up</span>
-              <span>+12 akun minggu ini</span>
+              <span className="material-symbols-outlined text-sm">database</span>
+              <span>Tersimpan di database</span>
             </div>
           </div>
         </div>
@@ -209,11 +259,11 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
           </div>
           <div className="mt-3">
             <div className="font-headline-lg text-2xl sm:text-3xl text-on-surface font-bold">
-              {adminCount + 20} <span className="text-xs font-normal text-on-surface-variant">Petugas</span>
+              {formatAngka(counts.admin)} <span className="text-xs font-normal text-on-surface-variant">Petugas</span>
             </div>
             <div className="flex items-center gap-1.5 mt-1 text-xs text-on-surface-variant">
               <span className="w-2 h-2 rounded-full bg-primary"></span>
-              <span>16 Tim Wilayah • 8 Administrator Pusat</span>
+              <span>Akses penuh kelola data &amp; pengguna</span>
             </div>
           </div>
         </div>
@@ -229,10 +279,10 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
           </div>
           <div className="mt-3">
             <div className="font-headline-lg text-2xl sm:text-3xl text-on-surface font-bold">
-              {userCount + 1400} <span className="text-xs font-normal text-on-surface-variant">Akun</span>
+              {formatAngka(counts.user)} <span className="text-xs font-normal text-on-surface-variant">Akun</span>
             </div>
             <div className="flex items-center gap-1.5 mt-1 text-xs text-on-surface-variant">
-              <span>Pelapor &amp; Relawan Warga</span>
+              <span>Akun yang mendaftar lewat halaman Register</span>
             </div>
           </div>
         </div>
@@ -250,7 +300,7 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
                 : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            Semua Pengguna <span className="ml-1 px-1.5 py-0.2 rounded-full bg-surface-container text-[10px]">{users.length}</span>
+            Semua Pengguna <span className="ml-1 px-1.5 py-0.2 rounded-full bg-surface-container text-[10px]">{counts.semua}</span>
           </button>
           <button
             onClick={() => setActiveTab('admin')}
@@ -260,7 +310,7 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
                 : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            Administrator &amp; Petugas <span className="ml-1 px-1.5 py-0.2 rounded-full bg-surface-container text-[10px]">{adminCount}</span>
+            Administrator &amp; Petugas <span className="ml-1 px-1.5 py-0.2 rounded-full bg-surface-container text-[10px]">{counts.admin}</span>
           </button>
           <button
             onClick={() => setActiveTab('user')}
@@ -270,7 +320,7 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
                 : 'text-on-surface-variant hover:text-on-surface'
             }`}
           >
-            Pengguna Publik <span className="ml-1 px-1.5 py-0.2 rounded-full bg-surface-container text-[10px]">{userCount}</span>
+            Pengguna Publik <span className="ml-1 px-1.5 py-0.2 rounded-full bg-surface-container text-[10px]">{counts.user}</span>
           </button>
         </div>
 
@@ -329,7 +379,7 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container-low">
-              {filteredUsers.map((user) => {
+              {users.map((user) => {
                 const initials = user.nama
                   .split(' ')
                   .map((n) => n[0])
@@ -344,14 +394,14 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
                       <div className="flex items-center gap-3">
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
-                            user.avatarColor || (isAdmin ? 'bg-primary text-white' : 'bg-gray-200 text-gray-800')
+                            warnaAvatar(user.id)
                           }`}
                         >
                           {initials}
                         </div>
                         <div className="flex flex-col">
                           <span className="font-semibold text-on-surface text-xs">{user.nama}</span>
-                          <span className="text-[10px] text-outline">{user.instansi || 'Masyarakat'}</span>
+                          <span className="text-[10px] text-outline">ID: {user.id}</span>
                         </div>
                       </div>
                     </td>
@@ -372,7 +422,7 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
                     </td>
 
                     <td className="py-3 px-4 text-on-surface-variant whitespace-nowrap">
-                      {user.tanggalRegister}
+                      {formatTanggal(user.tanggalRegister)}
                     </td>
 
                     <td className="py-3 px-4 text-right whitespace-nowrap">
@@ -390,38 +440,34 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
               })}
             </tbody>
           </table>
+          {!isLoading && users.length === 0 && (
+            <div className="py-10 px-4 text-center text-xs text-on-surface-variant flex items-center justify-center gap-2">
+              {errorMessage && <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />}
+              <span>{errorMessage || 'Tidak ada pengguna yang cocok dengan pencarian.'}</span>
+            </div>
+          )}
+          {isLoading && users.length === 0 && (
+            <div className="py-10 flex items-center justify-center gap-2 text-xs text-on-surface-variant">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Memuat pengguna dari database...</span>
+            </div>
+          )}
         </div>
 
         {/* Paginasi & Kontrol Baris */}
         <div className="px-4 py-3 bg-white border-t border-surface-container flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-on-surface-variant">
-          <div>
-            Menampilkan <span className="font-semibold text-on-surface">1 - {filteredUsers.length}</span> dari{' '}
-            <span className="font-semibold text-on-surface">{users.length + 1420}</span> Pengguna
+          <div className="flex items-center gap-2">
+            {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            <span>
+              Menampilkan{' '}
+              <span className="font-semibold text-on-surface">
+                {totalRows === 0 ? '0' : `${formatAngka(startRow)} - ${formatAngka(endRow)}`}
+              </span>{' '}
+              dari <span className="font-semibold text-on-surface">{formatAngka(totalRows)}</span> Pengguna
+            </span>
           </div>
 
-          <div className="flex items-center gap-1">
-            <button disabled className="px-2.5 py-1 rounded-lg text-on-surface-variant bg-surface-container-low opacity-50 cursor-not-allowed">
-              Sebelumnya
-            </button>
-            <div className="flex items-center gap-1 mx-1">
-              <button className="w-7 h-7 rounded-lg bg-primary-container text-white font-semibold flex items-center justify-center">
-                1
-              </button>
-              <button className="w-7 h-7 rounded-lg text-on-surface-variant hover:bg-surface-container-low flex items-center justify-center">
-                2
-              </button>
-              <button className="w-7 h-7 rounded-lg text-on-surface-variant hover:bg-surface-container-low flex items-center justify-center">
-                3
-              </button>
-              <span className="px-1 text-outline">...</span>
-              <button className="w-7 h-7 rounded-lg text-on-surface-variant hover:bg-surface-container-low flex items-center justify-center">
-                179
-              </button>
-            </div>
-            <button className="px-2.5 py-1 rounded-lg text-on-surface-variant hover:bg-surface-container-low font-semibold cursor-pointer">
-              Berikutnya
-            </button>
-          </div>
+          <Pagination page={currentPageNum} totalPages={totalPages} onChange={setCurrentPageNum} disabled={isLoading} />
         </div>
       </div>
 
@@ -489,7 +535,7 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
       {createModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-          onClick={() => setCreateModalOpen(false)}
+          onClick={closeCreateModal}
         >
           <div
             className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-surface-container"
@@ -502,7 +548,7 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
                 <h3 className="text-base font-bold text-on-surface">Tambah Pengguna Baru</h3>
                 <p className="text-xs text-on-surface-variant">Buat akun untuk staf pemantau atau publik</p>
               </div>
-              <button onClick={() => setCreateModalOpen(false)} className="p-1 hover:bg-gray-100 rounded">
+              <button type="button" onClick={closeCreateModal} className="p-1 hover:bg-gray-100 rounded cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -532,7 +578,14 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {createError && (
+                <div className="p-2.5 rounded-lg bg-red-50 text-red-800 border border-red-200 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>{createError}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold block mb-1">Peran Akses</label>
                   <select
@@ -546,35 +599,50 @@ export const AdminKelolaPenggunaPage: React.FC<AdminKelolaPenggunaPageProps> = (
                 </div>
 
                 <div>
-                  <label className="font-semibold block mb-1">Instansi / Asal Wilayah</label>
-                  <input
-                    type="text"
-                    value={newInstansi}
-                    onChange={(e) => setNewInstansi(e.target.value)}
-                    placeholder="Contoh: Tim Pemantau Jawa Barat"
-                    className="w-full px-3 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs focus:bg-white"
-                  />
+                  <label className="font-semibold block mb-1">Kata Sandi</label>
+                  <div className="relative flex items-center">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Min. 8 karakter"
+                      autoComplete="new-password"
+                      className="w-full px-3 pr-9 py-2 rounded-lg bg-surface-container-low border border-surface-container text-xs focus:bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-2.5 text-outline hover:text-on-surface cursor-pointer"
+                      title={showNewPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <div className="p-2.5 rounded-lg bg-surface-container-low text-[11px] text-on-surface-variant border border-surface-container">
-                Kata sandi awal default sementara adalah <code>Bencana@2024</code>. Pengguna akan diminta mengubah kata sandi pada saat masuk pertama kali.
+                Kata sandi disimpan terenkripsi (bcrypt) di tabel <code>users</code>. Sampaikan kata sandi ini kepada pengguna agar bisa masuk.
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-surface-container">
                 <button
                   type="button"
-                  onClick={() => setCreateModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-surface-container text-on-surface font-semibold text-xs cursor-pointer"
+                  onClick={closeCreateModal}
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded-lg bg-surface-container text-on-surface font-semibold text-xs cursor-pointer disabled:opacity-50"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-lg bg-primary text-white font-semibold text-xs hover:bg-primary-container transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  disabled={isSaving}
+                  className="px-5 py-2 rounded-lg bg-primary text-white font-semibold text-xs hover:bg-primary-container transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-70"
                 >
-                  <Save className="w-4 h-4" />
-                  <span>Simpan Pengguna</span>
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>{isSaving ? 'Menyimpan...' : 'Simpan Pengguna'}</span>
                 </button>
               </div>
             </form>
