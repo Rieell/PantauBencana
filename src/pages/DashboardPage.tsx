@@ -659,7 +659,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, disast
             <div className="flex items-center justify-between pb-2">
               <div className="text-xs text-on-surface-variant flex items-center gap-1.5 font-medium">
                 <Sparkles className="w-3.5 h-3.5 text-secondary" />
-                <span>Pemantauan Kota Wilayah (Rotasi Otomatis 1 per 1 Setiap 4 Detik)</span>
               </div>
               
               <div className="flex items-center gap-1.5">
