@@ -1,0 +1,7 @@
+{
+  "name": "PantauBencana - Portal Informasi Bencana Indonesia",
+  "description": "Portal informasi historis, peta spasial interaktif, katalog data kejadian banjir dan longsor di Indonesia serta dashboard manajemen Otoritas PantauBencana.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

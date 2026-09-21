@@ -1,0 +1,291 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --color-primary: #00288e;
+  --color-primary-container: #1e40af;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #a8b8ff;
+  --color-primary-fixed: #dde1ff;
+  --color-on-primary-fixed: #001453;
+  --color-on-primary-fixed-variant: #173bab;
+
+  --color-secondary: #006398;
+  --color-secondary-container: #5bb8fe;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #00476e;
+  --color-secondary-fixed: #cce5ff;
+  --color-on-secondary-fixed: #001d31;
+
+  --color-tertiary: #5a2500;
+  --color-tertiary-container: #7d3600;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-fixed: #ffdbca;
+  --color-tertiary-fixed-dim: #ffb68e;
+  --color-on-tertiary-fixed: #331200;
+  --color-on-tertiary-fixed-variant: #763300;
+
+  --color-surface: #f8f9ff;
+  --color-surface-bright: #f8f9ff;
+  --color-surface-dim: #ccdbf3;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e6eeff;
+  --color-surface-container-high: #dce9ff;
+  --color-surface-container-highest: #d5e3fc;
+
+  --color-on-surface: #0d1c2e;
+  --color-on-surface-variant: #444653;
+  --color-inverse-surface: #233144;
+  --color-inverse-on-surface: #eaf1ff;
+
+  --color-outline: #757684;
+  --color-outline-variant: #c4c5d5;
+
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error: #ffffff;
+  --color-on-error-container: #93000a;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+/* Custom Spacing & Typography Helpers */
+.font-headline-lg {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1.75rem;
+  line-height: 2.25rem;
+  font-weight: 700;
+}
+
+.font-headline-md {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+}
+
+.font-display-lg {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 2.25rem;
+  line-height: 2.75rem;
+  font-weight: 800;
+}
+
+.font-title-lg {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.625rem;
+  font-weight: 600;
+}
+
+.font-title-md {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+}
+
+.font-body-lg {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  line-height: 1.625rem;
+}
+
+.font-body-md {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+}
+
+.font-body-sm {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+}
+
+.font-label-lg {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+}
+
+.font-label-md {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.font-label-sm {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.625rem;
+  line-height: 0.875rem;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.px-gutter {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+.p-gutter {
+  padding: 1.5rem;
+}
+
+.space-y-space-md > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 1rem;
+}
+
+.space-y-space-lg > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 1.5rem;
+}
+
+.space-y-space-xl > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 2rem;
+}
+
+.space-y-space-xs > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.25rem;
+}
+
+.space-y-space-sm > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.5rem;
+}
+
+.gap-space-xs {
+  gap: 0.25rem;
+}
+
+.gap-space-sm {
+  gap: 0.5rem;
+}
+
+.gap-space-md {
+  gap: 1rem;
+}
+
+.gap-space-lg {
+  gap: 1.5rem;
+}
+
+.gap-space-xl {
+  gap: 2rem;
+}
+
+.p-space-xs {
+  padding: 0.25rem;
+}
+
+.p-space-sm {
+  padding: 0.5rem;
+}
+
+.p-space-md {
+  padding: 1rem;
+}
+
+.p-space-lg {
+  padding: 1.5rem;
+}
+
+.p-space-xl {
+  padding: 2rem;
+}
+
+.px-space-md {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.px-space-sm {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.px-space-lg {
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+.py-space-xs {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.py-space-sm {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.py-space-md {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.py-space-lg {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.py-space-xl {
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.mt-space-xs {
+  margin-top: 0.25rem;
+}
+
+.mt-space-sm {
+  margin-top: 0.5rem;
+}
+
+.mt-space-md {
+  margin-top: 1rem;
+}
+
+.mt-space-lg {
+  margin-top: 1.5rem;
+}
+
+.mt-space-xl {
+  margin-top: 2rem;
+}
+
+.mb-space-xs {
+  margin-bottom: 0.25rem;
+}
+
+.mb-space-sm {
+  margin-bottom: 0.5rem;
+}
+
+.mb-space-md {
+  margin-bottom: 1rem;
+}
+
+.mb-space-lg {
+  margin-bottom: 1.5rem;
+}
+
+.mb-space-xl {
+  margin-bottom: 2rem;
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  display: inline-block;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
+}
