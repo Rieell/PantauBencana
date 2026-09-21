@@ -1,26 +1,36 @@
-# Run and deploy your AI Studio app
+Panduan Menjalankan Website
+Berikut adalah langkah-langkah untuk menginstal dan menjalankan website secara lokal:
 
-This contains everything you need to run your app locally.
+1. Instalasi Dependensi
+Ekstrak file zip project. Buka terminal di dalam folder project tersebut dan jalankan perintah berikut:
 
-View your app in AI Studio: https://ai.studio/apps/66dd5f2f-6413-4ed1-82be-1ab3f9101a97
+npm install --legacy-peer-deps
 
-## Run Locally
+(Catatan: Pastikan menggunakan --legacy-peer-deps karena perintah npm install biasa akan gagal akibat konflik versi peer dependency dari bawaan project).
 
-**Prerequisites:**  Node.js
+3. Konfigurasi Database
 
+Buka phpMyAdmin melalui XAMPP atau aplikasi sejenis.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Buat database baru dengan nama pantaubencana.
 
-## Menjalankan dengan database (phpMyAdmin / XAMPP)
+Lakukan Import file pantaubencana.sql ke dalam database tersebut.
+(Nama database ini sudah dikonfigurasi di dalam file .env menggantikan nama sebelumnya).
 
-1. Nyalakan **MySQL** di XAMPP. Di phpMyAdmin buat database `pantaubencana`, lalu **Import** file `pantaubencana.sql`.
-2. Cek `.env`: `DB_NAME=pantaubencana`, `DB_USER=root`, `DB_PASSWORD=` (kosong untuk XAMPP), dan `JWT_SECRET` terisi.
-3. `npm install --legacy-peer-deps`
-4. Terminal 1: `npm run server` (API di http://localhost:5000)
-5. Terminal 2: `npm run dev` (web di http://localhost:3000)
+3. Menjalankan Server dan Frontend
+Buka dua terminal yang mengarah ke folder project ini, lalu jalankan perintah berikut di masing-masing terminal:
+Terminal 1 (Menjalankan API Server):
 
-Login admin: `admin@gmail.com` / `admin123` (dari tabel `users`).
+Bash
+npm run server
+Terminal 2 (Menjalankan Web/Frontend):
+
+Bash
+npm run dev
+
+4. Akses Login Admin
+Setelah website berhasil berjalan di browser, Anda dapat masuk menggunakan kredensial admin berikut:
+
+Email: admin@gmail.com
+
+Password: admin123
