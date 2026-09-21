@@ -25,7 +25,8 @@ npm install --legacy-peer-deps
 2. Buat database baru dan beri nama `pantaubencana`.
 3. Lakukan **Import** file `pantaubencana.sql` ke dalam database yang baru dibuat.
 
-> 💡 *Nama database ini sudah otomatis dikonfigurasi di dalam file `.env` menggantikan nama sebelumnya.*
+> 💡 **Info:** Nama database ini sudah otomatis dikonfigurasi di dalam file `.env` menggantikan nama sebelumnya.
+> 📊 **Sumber Data:** Dataset bencana alam yang digunakan dalam database ini diambil dari Kaggle: [Indonesia Natural Disaster Dataset (BNPB Records)](https://www.kaggle.com/datasets/maudiana/indonesia-natural-disaster-dataset-bnpb-records?utm_source=gemini).
 
 ---
 
