@@ -1,36 +1,63 @@
-Panduan Menjalankan Website
-Berikut adalah langkah-langkah untuk menginstal dan menjalankan website secara lokal:
+```markdown
+# 🚀 Panduan Menjalankan Website
 
-1. Instalasi Dependensi
-Ekstrak file zip project. Buka terminal di dalam folder project tersebut dan jalankan perintah berikut:
+Berikut adalah langkah-langkah untuk menginstal dan menjalankan website ini.
 
+---
+
+## 📦 1. Instalasi Dependensi
+
+Ekstrak file zip project. Buka terminal di dalam direktori project tersebut, lalu jalankan perintah berikut:
+
+```bash
 npm install --legacy-peer-deps
 
-(Catatan: Pastikan menggunakan --legacy-peer-deps karena perintah npm install biasa akan gagal akibat konflik versi peer dependency dari bawaan project).
+```
 
-3. Konfigurasi Database
+> **⚠️ Catatan Penting:**
+> Pastikan Anda menambahkan flag `--legacy-peer-deps`. Jika menggunakan `npm install` biasa, proses instalasi akan gagal akibat konflik versi *peer dependency* bawaan dari project.
 
-Buka phpMyAdmin melalui XAMPP atau aplikasi sejenis.
+---
 
-Buat database baru dengan nama pantaubencana.
+## 🗄️ 2. Konfigurasi Database
 
-Lakukan Import file pantaubencana.sql ke dalam database tersebut.
-(Nama database ini sudah dikonfigurasi di dalam file .env menggantikan nama sebelumnya).
+1. Buka **phpMyAdmin** melalui XAMPP atau aplikasi server lokal sejenis.
+2. Buat database baru dan beri nama `pantaubencana`.
+3. Lakukan **Import** file `pantaubencana.sql` ke dalam database yang baru dibuat.
 
-3. Menjalankan Server dan Frontend
-Buka dua terminal yang mengarah ke folder project ini, lalu jalankan perintah berikut di masing-masing terminal:
-Terminal 1 (Menjalankan API Server):
+> 💡 *Nama database ini sudah otomatis dikonfigurasi di dalam file `.env` menggantikan nama sebelumnya.*
 
-Bash
+---
+
+## ⚙️ 3. Menjalankan Server dan Frontend
+
+Buka **dua terminal** terpisah yang mengarah ke folder project ini. Jalankan perintah berikut di masing-masing terminal:
+
+**Terminal 1 (Menjalankan API Server):**
+
+```bash
 npm run server
-Terminal 2 (Menjalankan Web/Frontend):
 
-Bash
+```
+
+**Terminal 2 (Menjalankan Web/Frontend):**
+
+```bash
 npm run dev
 
-4. Akses Login Admin
-Setelah website berhasil berjalan di browser, Anda dapat masuk menggunakan kredensial admin berikut:
+```
 
-Email: admin@gmail.com
+---
 
-Password: admin123
+## 🔐 4. Akses Login Admin
+
+Setelah server dan frontend berhasil berjalan, buka browser dan akses localhost Anda. Gunakan kredensial berikut untuk masuk sebagai Admin:
+
+* **Email:** `admin@gmail.com`
+* **Password:** `admin123`
+
+---
+
+```
+
+```
