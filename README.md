@@ -1,63 +1,97 @@
-# 🚀 Panduan Menjalankan Website
+# PantauBencana
 
-Berikut adalah langkah-langkah untuk menginstal dan menjalankan website ini.
+Portal informasi bencana alam Indonesia: peta interaktif, katalog data kejadian, dan dashboard admin.
+
+**Teknologi:** React 19 + Vite + Tailwind (frontend), Express (backend API), MySQL (database).
+
+**Sumber data:** [Indonesia Natural Disaster Dataset (BNPB Records)](https://www.kaggle.com/datasets/maudiana/indonesia-natural-disaster-dataset-bnpb-records) dari Kaggle.
 
 ---
 
-## 📦 1. Instalasi Dependensi
+## Struktur folder
 
-Ekstrak file zip project. Buka terminal di dalam direktori project tersebut, lalu jalankan perintah berikut:
+```
+PantauBencana/
+├── api/index.js        Pintu masuk serverless function di Vercel
+├── server/
+│   ├── app.js          Aplikasi Express (semua endpoint /api/*)
+│   └── index.js        Menjalankan API secara lokal
+├── src/                Frontend React
+├── database/           Taruh pantaubencana.sql di sini
+├── scripts/            Utilitas (buat hash password)
+├── vercel.json         Konfigurasi deploy Vercel
+├── .env.example        Contoh pengaturan environment
+└── package.json
+```
+
+---
+
+## Menjalankan di komputer sendiri
+
+**1. Instal dependensi**
 
 ```bash
 npm install --legacy-peer-deps
-
 ```
 
-> **⚠️ Catatan Penting:**
-> Pastikan Anda menambahkan flag `--legacy-peer-deps`. Jika menggunakan `npm install` biasa, proses instalasi akan gagal akibat konflik versi *peer dependency* bawaan dari project.
+**2. Siapkan database**
 
----
+1. Nyalakan MySQL di XAMPP, buka phpMyAdmin.
+2. Buat database `pantaubencana`.
+3. Import file `pantaubencana.sql`.
 
-## 🗄️ 2. Konfigurasi Database
-
-1. Buka **phpMyAdmin** melalui XAMPP atau aplikasi server lokal sejenis.
-2. Buat database baru dan beri nama `pantaubencana`.
-3. Lakukan **Import** file `pantaubencana.sql` ke dalam database yang baru dibuat.
-
-> 💡 **Info:** Nama database ini sudah otomatis dikonfigurasi di dalam file `.env` menggantikan nama sebelumnya.
-> 📊 **Sumber Data:** Dataset bencana alam yang digunakan dalam database ini diambil dari Kaggle: [Indonesia Natural Disaster Dataset (BNPB Records)]([https://www.kaggle.com/datasets/maudiana/indonesia-natural-disaster-dataset-bnpb-records?resource=download]).
-
----
-
-## ⚙️ 3. Menjalankan Server dan Frontend
-
-Buka **dua terminal** terpisah yang mengarah ke folder project ini. Jalankan perintah berikut di masing-masing terminal:
-
-**Terminal 1 (Menjalankan API Server):**
+**3. Buat file `.env`**
 
 ```bash
-npm run server
-
+cp .env.example .env
 ```
 
-**Terminal 2 (Menjalankan Web/Frontend):**
+Untuk XAMPP, nilai bawaan di `.env.example` sudah cocok. Isi `JWT_SECRET` dengan string acak supaya sesi login tidak hilang saat server restart.
+
+**4. Jalankan (dua terminal)**
 
 ```bash
-npm run dev
-
+npm run server   # Terminal 1: API di http://localhost:5000
+npm run dev      # Terminal 2: web di http://localhost:3000
 ```
+
+Cek koneksi database: buka `http://localhost:5000/api/health`.
 
 ---
 
-## 🔐 4. Akses Login Admin
+## Deploy ke Vercel + MySQL cloud
 
-Setelah server dan frontend berhasil berjalan, buka browser dan akses localhost Anda. Gunakan kredensial berikut untuk masuk sebagai Admin:
+1. **Database cloud.** Buat service MySQL (mis. Aiven), lalu import `database/pantaubencana.sql` ke sana (lihat `database/README.md`).
+2. **Push ke GitHub.** Pastikan `.env` tidak ikut ter-upload (sudah diatur di `.gitignore`).
+3. **Import proyek di Vercel** (Add New → Project). Pengaturan build sudah ada di `vercel.json`.
+4. **Isi Environment Variables** di Vercel:
 
-* **Email:** `admin@gmail.com`
-* **Password:** `admin123`
+   | Nama | Isi |
+   |---|---|
+   | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Dari halaman service database |
+   | `DB_SSL` | `true` |
+   | `DB_CA` | Sertifikat CA dalam satu baris, baris baru diganti `\n` |
+   | `JWT_SECRET` | String acak panjang (wajib) |
+
+5. **Deploy**, lalu buka `https://NAMA-PROYEK.vercel.app/api/health`. Hasil `{"ok":true,...}` berarti API dan database sudah tersambung.
+
+Setelah mengubah Environment Variables, lakukan **Redeploy** agar nilainya terbaca.
 
 ---
 
+## Akun admin
+
+Akun disimpan di tabel `users`. **Ganti password admin bawaan sebelum situs dipublikasikan.**
+
+```bash
+npm run hash-password -- "PasswordBaruYangKuat"
 ```
 
-```
+Salin perintah `UPDATE` yang tampil, lalu jalankan di phpMyAdmin (lokal) atau DBeaver (database cloud).
+
+---
+
+## Catatan
+
+- Ekspor CSV dibatasi 15.000 baris di Vercel karena batas ukuran respons fungsi serverless (50.000 baris di lokal). Ubah dengan `EXPORT_MAX_ROWS`.
+- Paket gratis database cloud umumnya bukan untuk produksi dan bisa dimatikan jika lama tidak dipakai. Cek statusnya sebelum demo.
